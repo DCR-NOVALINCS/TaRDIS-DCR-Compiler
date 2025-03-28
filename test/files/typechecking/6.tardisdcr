@@ -1,0 +1,24 @@
+# ============================================== #
+# target: typechecking.ml                        #
+# ---------------------------------------------- #
+# description: testing a two spawn relations     # 
+#              with event labels with different  # 
+#              value types.                      #
+# ---------------------------------------------- #
+# expected: error, type on event label is not    #
+#           the same.                            #
+# ============================================== #
+
+Z
+;
+Z flows Z
+;
+(a: A) (Z; Z) [?] [ Z -> Z ] 
+(b: B) (Z; Z) [?] [ Z -> Z ] 
+;
+a -->> {
+    (c: C) (Z; Z) [0] [ Z -> Z ] 
+}
+b -->> {
+    (c: C) (Z; Z) [true] [ Z -> Z ] 
+}

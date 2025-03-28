@@ -1,0 +1,12 @@
+(env
+ (dev
+  (flags
+   (:standard -warn-error -A))))
+
+(tests
+ (names
+  test_typechecking
+  test_babel
+  test_projections
+  test_static_ifc)
+ (libraries ounit2 verification translation utils))

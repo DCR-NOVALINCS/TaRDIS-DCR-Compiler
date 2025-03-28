@@ -1,0 +1,8 @@
+(library
+ (name sat)
+ (libraries frontend))
+
+(env
+ (dev
+  (flags
+   (:standard -warn-error -A))))

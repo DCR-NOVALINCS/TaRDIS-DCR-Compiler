@@ -1,0 +1,16 @@
+# ============================================== #
+# target: typechecking.ml                        #
+# ---------------------------------------------- #
+# description: test primitive expression types.  #
+# ---------------------------------------------- #
+# expected: ok                                   #
+# ============================================== #
+
+Z
+;
+Z flows Z
+;
+(a: A) (Z; Z) ['Hello TaRDIS!'] [ Z -> Z ]
+(b: B) (Z; Z) [true] [ Z -> Z ]
+(c: C) (Z; Z) [1] [ Z -> Z ]
+(d: D) (Z; Z) [{n: 1, s: 'Hello', b: true} ][ Z -> Z ]

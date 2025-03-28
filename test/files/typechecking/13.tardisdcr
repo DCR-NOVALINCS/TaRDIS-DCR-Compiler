@@ -1,0 +1,17 @@
+# ============================================== #
+# target: typechecking.ml                        #
+# ---------------------------------------------- #
+# description: testing getting event labels      # 
+#              from elsewhere.                   # 
+# ---------------------------------------------- #
+# expected: error, the event "e" has a cyclic    #
+#           dependency with itself.              #
+# ============================================== #
+
+Z
+;
+Z flows Z
+;
+(e: E) (Z; Z) [? : E] [ Z -> Z ] 
+(f: F) (Z; Z) [? : G] [ Z -> Z ] 
+(g: G) (Z; Z) [? : F] [ Z -> Z ] 

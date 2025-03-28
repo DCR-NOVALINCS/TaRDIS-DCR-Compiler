@@ -1,0 +1,40 @@
+//# ============================================== #
+//# target: static_checking.ml                     #
+//# ---------------------------------------------- #
+//# description:  Testing params #
+//# ---------------------------------------------- #
+//# expected: Equal to 0.1                       #
+//# ============================================== #
+
+L0
+//# L0 
+//#L1(cid:String) -> L1 (@id: String, cid:String) -> 
+L1
+L2
+
+
+;
+L0 flows L1
+L1 flows L2
+;
+(a:X) (L2) [2]  [L0]
+(b:B) (L0) [true]   [L0]
+%(c:C)(L1) [true]   [L0]
+(y:Y) (L0) [?:{value: String}]   [L0]
+;
+b -->+ c
+y -->> {
+    (yinfo:info)(L0)[{id=@trigger.value}][L0]
+    (create:create)(L0)[?:{cid:String}][L0]
+    ;
+    create -->> {
+        (new:new)(L0)[{nid=@trigger.value.cid}][L0]
+        ;
+        new -->> {
+            (d:d)(L1)[{did= @trigger.value.nid}][L0]
+            ;
+            d -->% a
+            //a -->+ c
+        }
+    }
+}

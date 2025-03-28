@@ -1,0 +1,17 @@
+# ============================================== #
+# target: typechecking.ml                        #
+# ---------------------------------------------- #
+# description: testing redeclare event label     # 
+#              with different type.              # 
+# ---------------------------------------------- #
+# expected: error, similar to test 10 & 11, but  #
+#           with computation events and records. #
+# ============================================== #
+
+Z
+;
+Z flows Z
+;
+(a: A) (Z; Z) [{n: 0}] [ Z -> Z ] 
+(b: A) (Z; Z) [{n: 1}] [ Z -> Z ] 
+(c: A) (Z; Z) [{n: 'a'}] [ Z -> Z ] 

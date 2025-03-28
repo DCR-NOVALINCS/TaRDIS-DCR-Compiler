@@ -1,0 +1,43 @@
+# ============================================== #
+# target: static_checking.ml                     #
+# ---------------------------------------------- #
+# description:   Check simple with spawn#
+# ---------------------------------------------- #
+# expected: ok                                   #
+# ============================================== #
+
+
+Secret
+Orchestrator
+Prosumer
+Public
+;
+Public flows Prosumer
+Public flows Orchestrator
+Prosumer flows Secret
+Orchestrator flows Secret
+;
+
+(createCommunity:cc) (Public) [?:{ cid : String }] [A]
+;
+createCommunity -->> {
+    (communityInfo:CommunityInfo) (Public) [{cid: @trigger.value.cid}] [A]   
+    (createProsumer:cp) ( Orchestrator, Prosumer) [? : {pid: String}] [A]
+    ;
+    createProsumer -->> {
+      (prosumerInfo:ProsumerInfo) (Orchestrator,Prosumer) [{pid:@trigger.value.pid}] [A]
+      (consume:c) (Prosumer) [?:{kw:String, t:String}] [A]
+      (replyConsume:rc) (Prosumer) [?:{kw:String, request:EnergyRequest}] [A]
+      ;
+        consume -->> {
+            !(energyRequest: EnergyRequest) (Prosumer) 
+            [{consumer:prosumerInfo.value.pid, kw:@trigger.value.kw, t:@trigger.value.t, ci: communityInfo}] [A]
+        
+        }
+    }
+ 
+}
+
+    
+
+   

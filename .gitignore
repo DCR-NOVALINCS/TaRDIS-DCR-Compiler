@@ -1,0 +1,14 @@
+# ocamlbuild working directory
+_build/
+
+# Local OPAM switch
+_opam/
+
+# Opam integration - freshly generated with each build
+*.opam
+
+output_cypher.*
+output_reda.*
+output_tardis.*
+output_babel.*
+translate.js

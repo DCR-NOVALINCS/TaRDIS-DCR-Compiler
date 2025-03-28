@@ -1,0 +1,17 @@
+# ============================================== #
+# target: typechecking.ml                        #
+# ---------------------------------------------- #
+# description: testing redeclaring events.       # 
+# ---------------------------------------------- #
+# expected: error, not possible to redeclare the #
+#           same event label with different type #
+#           values.                              #
+# ============================================== #
+
+Z
+;
+Z flows Z
+;
+(a: A) (Z; Z) [?: String] [ Z -> Z ] 
+(a: A) (Z; Z) [?: Number] [ Z -> Z ] 
+(a: A) (Z; Z) [?: Boolean] [ Z -> Z ] 

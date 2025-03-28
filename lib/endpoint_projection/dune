@@ -1,0 +1,10 @@
+(library
+ (name endpoint_projection)
+ (libraries utils verification)
+  
+ )
+
+(env
+ (dev
+  (flags
+   (:standard -warn-error -A))))

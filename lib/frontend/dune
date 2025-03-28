@@ -1,0 +1,13 @@
+(library
+ (name frontend))
+
+(ocamllex lexer)
+
+(menhir
+ (modules parser)
+ (flags --explain))
+
+(env
+ (dev
+  (flags
+   (:standard -warn-error -A))))

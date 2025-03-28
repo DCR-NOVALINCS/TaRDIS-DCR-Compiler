@@ -1,0 +1,59 @@
+// security labels / parametrised roles
+CO(cid:Integer)
+P(id:String; cid:Integer)
+Public
+;
+// security lattice / information flow 
+Public flows Public
+;
+// base case extended with spawn
+// (e0:E0) (Public) [?] [CO(cid=0) -> P(id=*; cid=0)]
+// ;
+// e0 -->> {
+//   (e1:E1) (Public) [?] [P(id='p1'; cid=0) -> P(id=*; cid=0)]
+// }
+// base case extended with spawn + trigger
+// (e0:E0) (Public) [?:String] [CO(cid=0) -> P(id=*; cid=0)]
+// ;
+// e0 -->> {
+//   (e1:E1) (Public) [?] [P(id=@trigger.value; cid=0) -> P(id=*; cid=0), CO(cid=0)]
+// }
+// introducing Initiator expr
+// (e0:E0) (Public) [?:String] [CO(cid=0) -> P(id=*; cid=0)]
+// ;
+// e0 -->> {
+//   (e1:E1) (Public) [?] [@Initiator(e0) -> P(id=*; cid=0)]
+// }
+// introducing Receiver expr
+// (e0:E0) (Public) [?] [CO(cid=0) -> P(id=*; cid=0)]
+// ;
+// e0 -->> {
+//   (e1:E1) (Public) [?] [@Receiver(e0) -> P(id=*; cid=0)]
+// }
+// accumulating roles in Receiver
+// (e0:E0) (Public) [?:String] [CO(cid=0) -> P(id=*; cid=0), CO(cid=1)]
+// ;
+// e0 -->> {
+//   (e1:E1) (Public) [?] [@Receiver(e0) -> P(id=*; cid=0)]
+// }
+// base case extended with spawn + trigger and nested spawn with "consume-like" combo
+// (e0:E0) (Public) [?:String] [CO(cid=0) -> P(id=*; cid=0)]
+// ;
+// e0 -->> {
+//   (e1:E1) (Public) [?] [P(id=@trigger.value; cid=0) -> P(id=*; cid=0), CO(cid=0)]
+//   ;
+//   e1 -->> {
+//     (e2:E2) (Public) [?] [@Initiator(e1) -> P(id=*; cid=0), CO(cid=0)]
+//   }
+// }
+// base case extended with spawn + trigger and nested spawn with 
+// "reply-like" combo - next step is @Receiver(e1)\CO(cid)
+(e0:E0) (Public) [?:String] [CO(cid=0) -> P(id=*; cid=0)]
+;
+e0 -->> {
+   (e1:E1) (Public) [?] [P(id=@trigger.value; cid=0) -> P(id=*; cid=0), CO(cid=0)]
+   ;
+   e1 -->> {
+     (e2:E2) (Public) [?] [@Receiver(e1) -> @Initiator(e1), CO(cid=0)]
+   }
+ }

@@ -1,0 +1,16 @@
+# ============================================== #
+# target: typechecking.ml                        #
+# ---------------------------------------------- #
+# description: getting property values from      #
+#              events and adds a operator.       #
+# ---------------------------------------------- #
+# expected: ok                                   #
+# ============================================== #
+
+Z
+;
+Z flows Z
+;
+(d: D) (Z; Z) [?:{v: Number}] [ Z -> Z ] 
+(e: E) (Z; Z) [{s: d.value.v}] [ Z -> Z ] 
+(f: F) (Z; Z) [{s: e.value.s + 1}] [ Z -> Z ] 

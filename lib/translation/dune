@@ -1,0 +1,8 @@
+(library
+ (name translation)
+ (libraries utils verification endpoint_projection yojson))
+
+(env
+ (dev
+  (flags
+   (:standard -warn-error -A))))

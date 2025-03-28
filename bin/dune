@@ -1,0 +1,50 @@
+(env
+ (dev
+  (flags
+   (:standard -warn-error -A))))
+
+; (executable
+;  (public_name reda)
+;  (name reda_main)
+;  (modules reda_main)
+;  (libraries utils reda cypher))
+
+(executable
+ (public_name tardis)
+ (name tardis_main)
+ (modules tardis_main)
+ (libraries str utils verification endpoint_projection translation)
+ (preprocess
+  (pps ppx_blob))
+ (preprocessor_deps
+  (file resources/input_babel.java)))
+
+; (executable
+;  (name reda_translate)
+;  (modules reda_translate)
+;  (libraries utils reda cypher js_of_ocaml)
+;  (modes byte)
+;  (preprocess
+;   (pps js_of_ocaml-ppx)))
+
+; (rule
+;  (alias default)
+;  (deps
+;   (file resources/input_babel.java))
+;  (targets input_babel.java)
+;  (action
+;   (run cp %{deps} %{targets})))
+
+(install
+ (section share)
+ (files resources/input_babel.java))
+
+; (rule
+;  (alias js)
+;  (deps
+;   (file reda_translate.bc))
+;  (targets translate.js)
+;  (action
+;   (run js_of_ocaml -o %{targets} %{deps})))
+
+; (run js_of_ocaml --debuginfo --sourcemap --pretty -o %{targets} main.bc))

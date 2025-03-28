@@ -1,0 +1,39 @@
+//  ============================================== #
+//  target: static_checking.ml                     #
+//  ---------------------------------------------- #
+//  description:  Testing params #
+//  ---------------------------------------------- #
+//  expected: Equal to 0.1                       #
+//  ============================================== #
+A
+L0
+L1(lid: String)
+L2(lid: String)
+;
+A flows L0
+L0 flows L1
+L1 flows L2
+;
+(a:X) (L2(lid:'ola')) [2]  [A]
+(b:B) (L1(lid:'ola')) ['ola']   [A]
+%(c:C)(L1(lid:b.value)) ['ola']   [A] 
+//(y:Y) (L0) [{v:b.value }]   [A]
+(y:Y) (L0) [?:{v: String }]   [A]
+;
+//  a -->+c
+b -->+ c
+y -->> {
+    (yinfo:info)(L1(lid:'ola'))[{id: @trigger.value.v}][A]
+    (create:create)(L1(lid:'ola'))[?:{cid:String}][A] 
+    ;
+    create -->> {
+        //#erro valueExprId( o event que originou o spawn) é d ???
+        (new:new)(L1(lid:@trigger.value.cid))[{nid:@trigger.value.cid}][A] 
+        ;
+        new -->> {
+            (d:d)(L1(lid:yinfo.value.id))[{did: @trigger.value.nid}][A]
+            
+           // a -->+ b
+        }
+    }
+}

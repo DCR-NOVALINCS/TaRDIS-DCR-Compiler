@@ -1,0 +1,22 @@
+# ============================================== #
+# target: typechecking.ml                        #
+# ---------------------------------------------- #
+# description: testing types from a trigger      # 
+#              value and a primitive value.      # 
+# ---------------------------------------------- #
+# expected: ok                                   #
+# ============================================== #
+
+Z
+;
+Z flows Z
+;
+(a: A) (Z; Z) [?:Number] [ Z -> Z ] 
+(b: B) (Z; Z) [?] [ Z -> Z ] 
+;
+a -->> {
+    (c: C) (Z; Z) [@trigger.value] [ Z -> Z ] 
+}
+b -->> {
+    (c: C) (Z; Z) [0] [ Z -> Z ] 
+}

@@ -1,0 +1,34 @@
+# ============================================== #
+# target: typechecking.ml                        #
+# ---------------------------------------------- #
+# description: testing getting trigger values    # 
+#              from different spawn scopes.      #
+# ---------------------------------------------- #
+# expected: ok                                   #
+# ============================================== #
+
+Z
+;
+Z flows Z
+;
+(a: A) (Z; Z) [?:Number] [ Z -> Z ] 
+;
+a -->> {
+    (b: B) (Z; Z) [?] [ Z -> Z ] 
+    (c: C) (Z; Z) [@trigger.value] [ Z -> Z ] 
+    (d: D) (Z; Z) [?: Number] [ Z -> Z ] 
+    ;
+    b -->> {
+        (c1: C) (Z; Z) [0] [ Z -> Z ] 
+        (e: E) (Z; Z) [?: Number] [ Z -> Z ] 
+        ;
+        e -->> {
+            (c2: C) (Z; Z) [@trigger.value] [ Z -> Z ] 
+        }
+        
+    }
+    d -->> {
+        (c1: C) (Z; Z) [@trigger.value] [ Z -> Z ] 
+    }
+    
+}

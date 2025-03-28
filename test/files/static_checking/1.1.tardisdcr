@@ -1,0 +1,43 @@
+# ============================================== #
+# target: static_checking.ml                     #
+# ---------------------------------------------- #
+# description:   Check simple with spawn#
+# ---------------------------------------------- #
+# expected: ok                                   #
+# ============================================== #
+
+
+Secret
+Orchestrator(String)
+Prosumer(String)
+Public
+;
+Public flows Prosumer
+Public flows Orchestrator
+Prosumer flows Secret
+Orchestrator flows Secret
+;
+
+(createCommunity:cc) (Secret;Public) [?:{ cid : String }] [A]
+;
+createCommunity -->> {
+    (communityInfo:CommunityInfo) (Orchestrator(@trigger.value.cid); Public) [{cid: @trigger.value.cid}] [A]   
+    (createProsumer:cp) (Orchestrator(@trigger.value.cid); Orchestrator(@trigger.value.cid), Prosumer(Lower)) [? : {pid: String}] [A]
+    ;
+    createProsumer -->> {
+      (prosumerInfo:ProsumerInfo) (Prosumer(@trigger.value.pid);Orchestrator(communityInfo.value.cid),Prosumer(@trigger.value.pid)) [{pid:@trigger.value.pid}] [A]
+      (consume:c) (Prosumer(@trigger.value.pid);Prosumer(Lower)) [?:{kw:String, t:String}] [A]
+      (replyConsume:rc) (Prosumer(@trigger.value.pid);Prosumer(@trigger.value.pid)) [?:{kw:String, request:EnergyRequest}] [A]
+      ;
+        consume -->> {
+            !(energyRequest: EnergyRequest) (Prosumer(prosumerInfo.value.pid); Prosumer(prosumerInfo.value.pid)) 
+            [{consumer:prosumerInfo.value.pid, kw:@trigger.value.kw, t:@trigger.value.t, ci: communityInfo}] [A]
+        
+        }
+    }
+ 
+}
+
+    
+
+   

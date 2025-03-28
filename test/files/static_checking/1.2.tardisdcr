@@ -1,0 +1,42 @@
+# ============================================== #
+# target: static_checking.ml                     #
+# ---------------------------------------------- #
+# description:   Check simple with spawn#
+# ---------------------------------------------- #
+# expected: ok                                   #
+# ============================================== #
+
+
+Secret
+O(String)
+P(String)
+Public
+;
+Public flows P
+Public flows O
+P flows Secret
+O flows Secret
+;
+
+(a:A) (Secret;Public) [?:{ id : String }] [A]
+;
+a -->> {
+    (b:B) (O(@trigger.value.cid); Public) [{cid: @trigger.value.cid}] [A]   
+    (c:C) (O(@trigger.value.cid); O(@trigger.value.cid), P(Lower)) [? : {id: String}] [A]
+    ;
+    c -->> {
+      (d:D) (P(@trigger.value.id);O(b.value.cid),P(@trigger.value.id)) [{id:@trigger.value.id}] [A]
+      (e:E) (P(@trigger.value.id);P(Lower)) [?:{kw:String, t:String}] [A]
+      (f:F) (P(@trigger.value.id);P(@trigger.value.id)) [?:{kw:String, g: G}] [A]
+      ;
+        e -->> {
+            !(g: G) (P(d.value.id); P(d.value.id)) [?] [A]
+        
+        }
+    }
+ 
+}
+
+    
+
+   

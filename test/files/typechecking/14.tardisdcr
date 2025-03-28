@@ -1,0 +1,16 @@
+# ============================================== #
+# target: typechecking.ml                        #
+# ---------------------------------------------- #
+# description: testing getting event label that  #
+#              is not defined.                   # 
+# ---------------------------------------------- #
+# expected: error, the labels WHOAMI and         #
+#           WHATISTHIS are missing.              #
+# ============================================== #
+
+Z
+;
+Z flows Z
+;
+(h: H) (Z; Z) [? : WHOAMI] [ Z -> Z ] 
+(i: I) (Z; Z) [? : WHATISTHIS] [ Z -> Z ] 

@@ -1,0 +1,66 @@
+P1 
+P2
+P3
+Public
+Secret
+;
+// security lattice / information flow 
+Public flows P1
+Public flows P2
+Public flows P3
+P1 flows Secret
+P2 flows Secret
+P3 flows Secret
+;
+// ==========================================
+(pInfo_1:prossumerInfo) (P1) ['Electric Vehicle'] [P1]
+(pInfo_2:prossumerInfo) (P2) ['Solar Panel'] [P2]
+(pInfo_3:prossumerInfo) (P3) ['Wind Generator'] [P3]
+
+(consume:consume) (P1,P2,P3) [? :{kw:Integer; t:String}] [P1 -> P2, P3]
+
+(reply_1: replyConsume) (P1,P3) [?: {kw:Integer; t:String; price:Integer}] [P2 -> P1]
+(reply_2: replyConsume) (P1,P2) [?: {kw:Integer; t:String; price:Integer}] [P3 -> P1]
+
+(accept_1: accept) (P1) [?:Integer] [P1 -> P2]
+(reject_1: reject) (P1) [?:Integer] [P1 -> P2]
+
+(accept_2: accept) (P1) [?:Integer] [P1 -> P3]
+(reject_2: reject) (P1) [?:Integer] [P1 -> P3]
+;
+
+consume -->* reply_1
+consume -->* reply_2
+consume -->+ reply_1
+consume -->+ reply_2
+reply_1 -->% reply_1
+reply_2 -->% reply_2
+
+reply_1 -->*  reject_1
+reply_2 -->*  reject_2
+reply_1 -->*  accept_1
+reply_2 -->*  accept_2
+reply_1 -->+  reject_1
+reply_2 -->+  reject_2
+reply_1 -->+  accept_1
+reply_2 -->+  accept_2
+
+reply_1 -->% reject_1
+reply_2-->%  reject_2
+reply_1 -->%  accept_1
+reply_2-->% accept_2
+
+
+reject_1 -->% reject_1
+reject_1 -->% accept_1
+accept_1 -->% accept_1
+accept_1 -->% reject_1
+reject_2 -->% reject_2
+reject_2 -->% accept_2
+accept_2 -->% accept_2
+accept_2 -->% reject_2
+
+//accept_1 -->% reply_1
+//reject_1 -->% reply_1
+//accept_2 -->% reply_2
+//reject_2 -->% reply_2

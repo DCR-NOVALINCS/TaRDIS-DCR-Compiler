@@ -1,0 +1,17 @@
+# ============================================== #
+# target: typechecking.ml                        #
+# ---------------------------------------------- #
+# description: testing getting event label that  #
+#              is not defined with extra         # 
+#              properties.                       #
+# ---------------------------------------------- #
+# expected: error, the event label 'WHOAMI'      #
+#           don't exist in this program.         # 
+# ============================================== #
+
+Z
+;
+Z flows Z
+;
+(h: H) (Z; Z) [? : {e: WHOAMI}] [ Z -> Z ] 
+(i: I) (Z; Z) [? : {n: Number, e: WHOAMI}] [ Z -> Z ] 
