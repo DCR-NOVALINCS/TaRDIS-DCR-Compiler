@@ -94,12 +94,6 @@ end = struct
       indent
 
   let init_empty label =
-    let role : CnfRole.t =
-      { label; param_types = StringMap.empty; encoding = [] }
-    and defines = StringMap.empty
-    and uses = StringMap.empty
-    and implicit_constraints = [] in
-    (* { role; defines; uses; implicit_constraints } *)
     { role = { label; param_types = StringMap.empty; encoding = [] }
     ; defines = StringMap.empty
     ; uses = StringMap.empty
@@ -200,7 +194,7 @@ module Projection = struct
         (unparse_info ())
         (unparse_symbols ())
         (unparse_communication e.communication)
-    indent
+        indent
         (unparse_cnf_formula e.instantiation_constraints)
     in
     List.map unparse_event events |> String.concat "\n\n"
@@ -346,20 +340,13 @@ end = struct
   let rec bootstrap_event_id = "#bootstrap"
 
   and init ~(self : CnfRole.t) =
-    let trigger_symbols = StringMap.empty
-    (* and initiators = CnfUserset.empty
-    and receivers = CnfUserset.empty *)
-    and trigger_chain = []
-    and trigger_exprs_by_sym = StringMap.empty
-    and bindings = StringMap.empty
-    and implicit_bindings = [] in
     [ ( bootstrap_event_id
       , { self
-        ; implicit_bindings
-        ; trigger_symbols
-        ; trigger_chain
-        ; trigger_exprs_by_sym
-        ; bindings
+        ; implicit_bindings = []
+        ; trigger_symbols = StringMap.empty
+        ; trigger_chain = []
+        ; trigger_exprs_by_sym = StringMap.empty
+        ; bindings = StringMap.empty
         } )
     ]
 
@@ -528,12 +515,6 @@ end = struct
         else
           ( { role_ctxt.role with encoding = clause :: role_ctxt.role.encoding }
           , role_ctxt.implicit_constraints )
-        (* 
-      let role =
-        { role_ctxt.role with encoding = clause :: role_ctxt.role.encoding }
-      and implicit_constraints =
-        if implicit then clause :: role_ctxt.implicit_constraints
-        else role_ctxt.implicit_constraints *)
       in
       { role_ctxt with role; uses; implicit_constraints }
     and uses = role_ctxt.uses in
@@ -650,13 +631,9 @@ end = struct
           { leading_param; local_bind_expr'; spawn_bind_expr' }
         in
         let clause = [ Positive (CnfSymEq (param_sym, renamed_bind_sym)) ] in
-        (* let role =
-          { role_ctxt.role with encoding = clause :: role_ctxt.role.encoding } *)
         let defines =
           StringMap.add renamed_bind_sym binding_info role_ctxt.defines
         and implicit_constraints = clause :: role_ctxt.implicit_constraints in
-        (* let role_ctxt =
-          { role_ctxt with role; defines; implicit_constraints } *)
         let role_ctxt = { role_ctxt with defines; implicit_constraints } in
         (* print_endline @@ Printf.sprintf "adding local bind: %s -> %s" bind_sym'.data (Frontend.Unparser.unparse_expr spawn_bind_expr'); *)
         let local_bindings =
@@ -664,6 +641,7 @@ end = struct
         in
         (trigger_ctxt, local_bindings, role_ctxt)
     end
+
 
   let user_set_role_expr_to_role_ctxt
       ((trigger_ctxt, local_bindings) :
@@ -678,7 +656,6 @@ end = struct
       (trigger_ctxt, local_bindings, RoleCtxt.init_empty role'.data)
       params
 
-  (* TODO *)
   let encode_user_set_expr (trigger_ctxt, local_bindings) user_set_expr' =
     let to_role_ctxts cnf_roles =
       List.map
@@ -916,7 +893,7 @@ module ProjectionContext = struct
 
   (* and direct_dep_t = (event_id * element_uid) * (event_id * element_uid) *)
 
-  let mk_abstract_self (self : CnfRole.t) : CnfRole.t =
+  (* let mk_abstract_self (self : CnfRole.t) : CnfRole.t =
     let label, param_types = (self.label, self.param_types) in
     let _, encoding =
       List.fold_left
@@ -929,8 +906,28 @@ module ProjectionContext = struct
         (0, [])
         (StringMap.bindings param_types)
     in
+    { label; param_types; encoding } *)
+
+  let mk_abstract_self (self : CnfRole.t) : CnfRole.t =
+    let label = self.label
+    and param_label = "@self"
+    and param_val = Sat.BoolLit true in
+    let param_types = StringMap.empty |> StringMap.add param_label BoolTy
+    and encoding = [ [ Positive (CnfEq (param_label, param_val)) ] ] in
     { label; param_types; encoding }
-  (* (label, (params, cnf)) *)
+  (* let label, param_types = (self.label, self.param_types) in
+    let _, encoding =
+      List.fold_left
+        (fun (counter, cnf) (param_label, _) ->
+          (* let param_label_sym = Printf.sprintf "%s#%s" label param_label in *)
+          let param_label_sym = Printf.sprintf "#%s" param_label in
+          let param_value_sym = Printf.sprintf "@s%d" counter in
+          ( counter + 1
+          , [ Positive (CnfSymEq (param_label_sym, param_value_sym)) ] :: cnf ))
+        (0, [])
+        (StringMap.bindings param_types)
+    in
+    { label; param_types; encoding } *)
 
   let init (self : CnfRole.t) =
     (* maps each role parameter to a regular computation expression whose
@@ -1190,6 +1187,8 @@ and project_events ctxt (events : Choreo.event' list) =
   let rec project (ctxt : ProjectionContext.t) (event' : Choreo.event')
       ~(self : CnfRole.t) ~(projection_type : projection_t)
       ~(local_bindings : (string * expr') StringMap.t) : Projection.event list =
+    print_endline
+    @@ Printf.sprintf "project called with self= %s" (CnfRole.to_string self);
     let remove_implicit_ implicit_constraints (cnf_role : CnfRole.t) =
       let encoding =
         List.fold_left
@@ -1294,7 +1293,7 @@ and project_events ctxt (events : Choreo.event' list) =
         (StringMap.bindings role_ctxts |> List.map snd)
     in
 
-    let resolve_self_as_participant (self : CnfRole.t)
+    (* let resolve_self_as_participant (self : CnfRole.t)
         (abstract_self : CnfRole.t)
         (* (scope_implicit_constraints : cnf_clause list) *)
           (participants : RoleCtxt.t StringMap.t) =
@@ -1311,38 +1310,8 @@ and project_events ctxt (events : Choreo.event' list) =
                 (CnfRole.resolve_role_intersection self role_ctxt.role)
                 ~none:None
                 ~some:(fun (role : CnfRole.t) ->
-                  (* aggregate implicit constraints (scope + role_ctxt) *)
-                  (* let implicit_constraints =
-                    implicit_constraints @ role_ctxt.implicit_constraints
-                  in *)
-                  (* let implicit_constraints = role_ctxt.implicit_constraints in *)
-                  (* print_endline
-                  @@ Printf.sprintf
-                       "encoding = %s"
-                       (unparse_cnf_formula role_ctxt.role.encoding); *)
-                  (* print_endline
-                  @@ Printf.sprintf
-                       "scope_implicit = %s"
-                       (unparse_cnf_formula scope_implicit_constraints); *)
-                  (* add implicit constraints for cnf ops *)
-                  (* let encoding =
-                    Sat.cnf_and role.encoding scope_implicit_constraints
-                  in
-                  let role = { role with encoding } in *)
-                  (* cleanup implicit constraints *)
-                  (* let encoding =
-                    List.fold_left
-                      (fun encoding clause ->
-                        List.filter (fun c -> c <> clause) encoding)
-                      role.encoding
-                      implicit_constraints
-                  in *)
-                  (* print_endline
-                  @@ Printf.sprintf "result = %s" (unparse_cnf_formula encoding);
-                  let role = { role with encoding } in *)
                   Some (role_ctxt, { role_ctxt with role }))))
-      (* Some { role_ctxt with role; implicit_constraints }))) *)
-    in
+    in *)
     let trigger_ctxt = ctxt.ProjectionContext.trigger_ctxt in
     let self = TriggerCtxt.self trigger_ctxt in
     let abstract_self = ctxt.abstract_self in
@@ -1385,9 +1354,342 @@ and project_events ctxt (events : Choreo.event' list) =
         local_bindings
     in
 
+    let initrs, rcvrs =
+      (derive_remote_participants init_ctxt, derive_remote_participants rcv_ctxt)
+    in
+
+    let resolve_unify_self (role : CnfRole.t) =
+      Option.bind
+        (CnfRole.resolve_role_intersection abstract_self role)
+        (fun _ ->
+          (* abstract_self not excluded *)
+          CnfRole.resolve_role_intersection self role)
+    in
+
+    let tx_opt, rx_opt =
+      ( StringMap.find_opt self.label init_ctxt
+      , StringMap.find_opt self.label rcv_ctxt )
+      |> function
+      | Some tx_ctxt, Some rx_ctxt ->
+        (* debug *)
+        print_endline
+        @@ Printf.sprintf
+             "\ntx_opt for role: %s"
+             (CnfRole.to_string tx_ctxt.role);
+        print_endline
+        @@ Printf.sprintf "rx_opt for : %s\n" (CnfRole.to_string rx_ctxt.role);
+        let common_constraints =
+          List.filter
+            (fun c1 ->
+              List.exists (fun c2 -> c1 = c2) rx_ctxt.implicit_constraints)
+            tx_ctxt.implicit_constraints
+        in
+        let add_common_implicits (role_ctxt : RoleCtxt.t) =
+          let encoding =
+            List.sort_uniq
+              cnf_clause_compare
+              (role_ctxt.role.encoding @ common_constraints)
+          in
+          let role = { role_ctxt.role with encoding } in
+          { role_ctxt with role }
+        in
+        (* debug *)
+        print_endline
+        @@ Printf.sprintf
+             "\ntx_opt after extending with common implicit: %s"
+             (CnfRole.to_string @@ (add_common_implicits tx_ctxt).role);
+        print_endline
+        @@ Printf.sprintf
+             "rx_opt after extending with common implicit: %s\n"
+             (CnfRole.to_string @@ (add_common_implicits rx_ctxt).role);
+        ( Some (add_common_implicits tx_ctxt)
+        , Some (add_common_implicits rx_ctxt) )
+        (* (tx_opt, rx_opt) *)
+      | _ as other -> other
+    in
+
+    let ctxt_res =
+      match (tx_opt, rx_opt) with
+      | Some tx_ctxt, Some rx_ctxt ->
+        print_endline @@ Printf.sprintf "Role at both sides";
+        (* partitioning of the collective implicit constraints on tx and rx 
+          according to whether they are present: on both sides, on tx-only, on 
+          rx-only
+        *)
+        let implicit_common, implicit_tx_only, implicit_rx_only =
+          let tx, rx =
+            ( List.sort_uniq Sat.cnf_clause_compare tx_ctxt.implicit_constraints
+            , List.sort_uniq Sat.cnf_clause_compare rx_ctxt.implicit_constraints
+            )
+          in
+          let dual, tx_o =
+            List.partition (fun c1 -> List.exists (fun c2 -> c1 = c2) rx) tx
+          and _, rx_o =
+            List.partition (fun c1 -> List.exists (fun c2 -> c1 = c2) tx) rx
+          in
+          (dual, tx_o, rx_o)
+        in
+
+        (* debug *)
+        print_endline
+        @@ Printf.sprintf
+             "\ncommon constraints: %s"
+             (unparse_cnf_formula implicit_common);
+        print_endline
+        @@ Printf.sprintf
+             "tx-only constraints: %s"
+             (unparse_cnf_formula implicit_tx_only);
+        print_endline
+        @@ Printf.sprintf
+             "rx-only constraints: %s\n"
+             (unparse_cnf_formula implicit_rx_only);
+
+        (* indicates whether tx/rx roles convert to a user under all implicit constraints *)
+        let is_implicit_tx_user =
+          (* let encoding =  in *)
+          let role =
+            { tx_ctxt.role with
+              encoding = cnf_and tx_ctxt.role.encoding implicit_tx_only
+            }
+          in
+          (not @@ is_user tx_ctxt.role) && (is_user @@ role)
+        and is_implicit_rx_user =
+          (* let encoding =  in *)
+          let role =
+            { rx_ctxt.role with
+              encoding = cnf_and rx_ctxt.role.encoding implicit_rx_only
+            }
+          in
+          (not @@ is_user rx_ctxt.role) && (is_user @@ role)
+        in
+
+        (* debug *)
+        print_endline
+        @@ Printf.sprintf "\nrx is implicit user: %b" is_implicit_rx_user;
+        print_endline
+        @@ Printf.sprintf "tx is implicit user: %b\n" is_implicit_tx_user;
+
+        (* *)
+        let tx_only_res =
+          let project_tx_self tx_only_role =
+            print_endline "called project_tx_self";
+            print_endline @@ Printf.sprintf "self = %s" (CnfRole.to_string self);
+            print_endline
+            @@ Printf.sprintf
+                 "tx_only_role = %s"
+                 (CnfRole.to_string tx_only_role);
+            Option.fold
+              (resolve_unify_self tx_only_role)
+              ~none:
+                (print_endline "self does not unify with tx_only role";
+                 [])
+              ~some:(fun (tx_self_role : CnfRole.t) ->
+                print_endline "self unifies with tx_only role";
+                print_endline
+                @@ Printf.sprintf
+                     "tx_self_role: %s"
+                     (CnfRole.to_string tx_self_role);
+                let rcvrs =
+                  if is_user tx_only_role then
+                    (* @self = tx = user => TxO *)
+                    CnfUserset.exclude_role rcvrs tx_self_role
+                  else rcvrs
+                in
+                let self =
+                  { self with
+                    encoding =
+                      List.sort
+                        cnf_clause_compare
+                        (cnf_and self.encoding tx_only_role.encoding)
+                  }
+                in
+                let projection_type =
+                  TxO (tx_ctxt.implicit_constraints, exclude_abstract_self rcvrs)
+                in
+                project ctxt event' ~self ~projection_type ~local_bindings)
+          in
+          Option.fold
+            (CnfRole.resolve_role_diff tx_ctxt.role rx_ctxt.role)
+            ~none:
+              (if is_user tx_ctxt.role then (
+                 print_endline "TxO with user on tx-side\n";
+                 project_tx_self tx_ctxt.role)
+               else [])
+            ~some:(fun diff_role ->
+              print_endline "some tx intersect";
+              project_tx_self diff_role)
+        (*  *)
+        (*  *)
+        and rx_only_res =
+          let project_rx_self rx_only_role =
+            print_endline
+            @@ Printf.sprintf "\nself: %s" (CnfRole.to_string self);
+            print_endline
+            @@ Printf.sprintf
+                 "rx_only_self: %s\n"
+                 (CnfRole.to_string rx_only_role);
+            Option.fold
+              (resolve_unify_self rx_only_role)
+              ~none:
+                (print_endline "self does not unify with rx_only role";
+                 [])
+              ~some:(fun (rx_self_role : CnfRole.t) ->
+                print_endline "self unifies with rx_only role";
+                print_endline
+                @@ Printf.sprintf
+                     "rx_self_role: %s"
+                     (CnfRole.to_string rx_self_role);
+                let initrs =
+                  if is_user rx_only_role then
+                    (* @self = tx = user => TxO *)
+                    CnfUserset.exclude_role initrs rx_self_role
+                  else initrs
+                in
+                let self =
+                  { self with
+                    encoding =
+                      List.sort
+                        cnf_clause_compare
+                        (cnf_and self.encoding rx_only_role.encoding)
+                  }
+                in
+                let projection_type =
+                  RxO
+                    (rx_ctxt.implicit_constraints, exclude_abstract_self initrs)
+                in
+                project ctxt event' ~self ~projection_type ~local_bindings)
+          in
+          Option.fold
+            (CnfRole.resolve_role_diff rx_ctxt.role tx_ctxt.role)
+            ~none:
+              (if is_user rx_ctxt.role then (
+                 print_endline "\nRxO with user on rx-side\n";
+                 project_rx_self rx_ctxt.role)
+               else [])
+            ~some:(fun diff_role ->
+              print_endline
+              @@ Printf.sprintf
+                   "\nrx_diff_role: %s"
+                   (CnfRole.to_string diff_role);
+              project_rx_self diff_role)
+        (*  *)
+        (*  *)
+        and tx_rx_res =
+          Option.fold
+            (CnfRole.resolve_role_intersection tx_ctxt.role rx_ctxt.role)
+            ~none:[]
+            ~some:(fun tx_rx_role ->
+              (* (* TODO [move upstream] to projectability - user sending a 
+            message to itself does not make sense: communication has no
+            effect *)
+              assert (not (is_user tx_ctxt.role && is_user rx_ctxt.role)); *)
+              if is_user tx_rx_role then (
+                print_endline
+                  "tx_rx dual comes down to single user - discarding monologue";
+                [])
+              else (
+                print_endline
+                @@ Printf.sprintf
+                     "tx_rx dual is a group: %s"
+                     (CnfRole.to_string tx_rx_role);
+                Option.fold
+                  (resolve_unify_self tx_ctxt.role)
+                  ~none:[]
+                  ~some:(fun (tx_rx_self_role : CnfRole.t) ->
+                    let is_implicit_tx_user =
+                      let tx_role =
+                        { tx_rx_role with
+                          encoding =
+                            List.sort_uniq
+                              cnf_clause_compare
+                              (cnf_and tx_rx_role.encoding implicit_tx_only)
+                        }
+                      in
+                      (not @@ is_user tx_rx_role) && (is_user @@ tx_role)
+                    and is_implicit_rx_user =
+                      let role =
+                        { tx_rx_role with
+                          encoding =
+                            List.sort_uniq
+                              cnf_clause_compare
+                              (cnf_and tx_rx_role.encoding implicit_rx_only)
+                        }
+                      in
+                      (not @@ is_user tx_rx_role) && (is_user @@ role)
+                    in
+
+                    (* debug *)
+                    print_endline
+                    @@ Printf.sprintf
+                         "\nrx is implicit user: %b"
+                         is_implicit_rx_user;
+                    print_endline
+                    @@ Printf.sprintf
+                         "tx is implicit user: %b\n"
+                         is_implicit_tx_user;
+
+                    let tx_implicit_constraints =
+                      let tx_encoding =
+                        cnf_and
+                          tx_ctxt.role.encoding
+                          tx_ctxt.implicit_constraints
+                      in
+                      if is_implicit_rx_user then
+                        List.concat_map (fun x -> [ x ]) implicit_rx_only
+                        |> cnf_neg |> cnf_and tx_encoding
+                      else tx_encoding |> List.sort_uniq cnf_clause_compare
+                    and rx_implicit_constraints =
+                      let rx_encoding =
+                        cnf_and
+                          rx_ctxt.role.encoding
+                          rx_ctxt.implicit_constraints
+                      in
+                      if is_implicit_tx_user then
+                        List.concat_map (fun x -> [ x ]) implicit_tx_only
+                        |> cnf_neg |> cnf_and rx_encoding
+                      else rx_encoding |> List.sort_uniq cnf_clause_compare
+                    in
+
+                    (* debug *)
+                    print_endline
+                    @@ Printf.sprintf
+                         "\nself_tx_ctxt.tx_implicit_constraints: %s"
+                         (unparse_cnf_formula tx_ctxt.implicit_constraints);
+                    print_endline
+                    @@ Printf.sprintf
+                         "tx_implicit_constraints: %s"
+                         (unparse_cnf_formula tx_implicit_constraints);
+                    print_endline
+                    @@ Printf.sprintf
+                         "self_rx_ctxt.rx_implicit_constraints: %s"
+                         (unparse_cnf_formula rx_ctxt.implicit_constraints);
+                    print_endline
+                    @@ Printf.sprintf
+                         "rx_implicit_constraints: %s\n"
+                         (unparse_cnf_formula rx_implicit_constraints);
+
+                    let projection_type =
+                      TxRx
+                        (* ( ( self_tx_ctxt.implicit_constraints *)
+                        ( (tx_implicit_constraints, exclude_abstract_self rcvrs)
+                          (* , ( self_rx_ctxt.implicit_constraints *)
+                        , (rx_implicit_constraints, exclude_abstract_self initrs)
+                        )
+                    in
+                    project ctxt event' ~self ~projection_type ~local_bindings)))
+        in
+
+        let projections = tx_only_res @ tx_rx_res @ rx_only_res in
+
+        ProjectionContext.include_projected_event event_id projections ctxt
+      | Some _, None -> ctxt
+      | None, Some _ -> ctxt
+      | None, None -> ctxt
+    in
+
     (* common implicit constraints must be included before intersection in
     order to correctly infer groups vs. users *)
-    let tx_opt, rx_opt =
+    (* let tx_opt, rx_opt =
       ( resolve_self_as_participant
           self
           abstract_self
@@ -1821,10 +2123,7 @@ and project_events ctxt (events : Choreo.event' list) =
                        "rx_implicit_constraints: %s\n"
                        (unparse_cnf_formula rx_implicit_constraints);
 
-                  (* if implicts used only in tx make it a user then within a 
-                    nested scope:
-                  - an rx-derived @self must explicity exclude at least one 
-                  of the non-common implicits *)
+            
                   let projection_type =
                     TxRx
                       (* ( ( self_tx_ctxt.implicit_constraints *)
@@ -1839,12 +2138,13 @@ and project_events ctxt (events : Choreo.event' list) =
           in
 
           ProjectionContext.include_projected_event event_id projections ctxt
-        end
-        (* *)
-        (*  *)
-        (*  *)
-        (* *)
-      | Some (_, tx_ctxt), None ->
+        end *)
+    (* *)
+    (*  *)
+    (*  *)
+    (* *)
+
+    (* | Some (_, tx_ctxt), None ->
         (* TODO provide role_ctxt to project as arg *)
         (* let self = (remove_implicit_ implicit_bindings tx_ctxt).role in *)
         (* let self = remove_implicit_ scope_implicit_constraints tx_ctxt.role in *)
@@ -1866,7 +2166,7 @@ and project_events ctxt (events : Choreo.event' list) =
         in
         ProjectionContext.include_projected_event event_id rx_event ctxt
       | None, None -> ctxt
-    in
+    in *)
     Ok { ctxt_res with trigger_ctxt }
   in
   fold_left_error project_event ctxt events
@@ -2087,7 +2387,7 @@ and fold_role ?(none = None) ~some = function
   | None -> none
   | Some role -> some role
 
-and to_constrained_role_exprs (ctxt : ProjectionContext.t)
+(* and to_constrained_role_exprs (ctxt : ProjectionContext.t)
     (event_uid : element_uid) (user_set_exprs : user_set_expr' list) :
     ProjectionContext.t * CnfUserset.t =
   List.fold_left
@@ -2193,7 +2493,7 @@ and to_constrained_userset_expr (ctxt : ProjectionContext.t) (uid, userset_expr'
     (* | Diff (_roles_l, _roles_r) -> assert false *)
   in
   (* TODO (tentative, not a priority) multiple projection contexts at once *)
-  constrained_roles_of userset_expr'
+  constrained_roles_of userset_expr' *)
 
 (** Entry Point *)
 let rec project (program : Choreo.program) =
@@ -2219,6 +2519,7 @@ and tmp_debug (ctxt : ProjectionContext.t) =
         Projection for %s\n\
         ==========================\n\
        \ \n\
-        %s"
+        %s\n\n\
+        ==========================\n"
        (ProjectionContext.self ctxt).label
        (Projection.unparse_projection (ProjectionContext.projection ctxt))
