@@ -28,7 +28,7 @@ Orchestrator flows Secret
 #Y0 = {cc.cid -> A} 
 ;
 createCommunity -->> {
-  (communityInfo:CommunityInfo) (Orchestrator(@trigger0.value.cid); Public) [{cid: @trigger0.value.cid}]  [A]
+  (communityInfo:CommunityInfo) (Orchestrator(@trigger0.value.cid); Public) [{cid= @trigger0.value.cid}]  [A]
   (createProsumer:cp) (Orchestrator(@trigger0.value.cid); Orchestrator(@trigger0.value.cid), Prosumer(Lower)) [? : {pid: String}]  [A]
 
 
@@ -54,7 +54,7 @@ createCommunity -->> {
 
 # {O(A), P(B)} >= {O(A); P(\bot)}
 
-      (prosumerInfo:ProsumerInfo) (Prosumer(@trigger1.value.pid); Orchestrator(communityInfo.value.cid),Prosumer(@trigger1.value.pid)) [{pid:@trigger1.value.pid}] [A]
+      (prosumerInfo:ProsumerInfo) (Prosumer(@trigger1.value.pid); Orchestrator(communityInfo.value.cid),Prosumer(@trigger1.value.pid)) [{pid=@trigger1.value.pid}] [A]
       
   }
 }

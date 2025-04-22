@@ -3,37 +3,35 @@
 //  ---------------------------------------------- #
 //  description:  Testing params #
 //  ---------------------------------------------- #
-//  expected: Equal to 0.1                       #
+//  expected: Equal to 0.1                       # BUG fix
 //  ============================================== #
 A
 L0
-L1(lid: String)
-L2(lid: String)
+L1(lid: String; v:String)
+L2(lid: String; v:String)
 ;
-A flows L0
+A flows L0  
 L0 flows L1
 L1 flows L2
 ;
-(a:X) (L2(lid:'ola')) [2]  [A]
-(b:B) (L1(lid:'ola')) ['ola']   [A]
-%(c:C)(L1(lid:b.value)) ['ola']   [A] 
-//(y:Y) (L0) [{v:b.value }]   [A]
+(a:X) (L2(lid:'ola'; v : 'ola')) [2]  [A]
+(b:B) (L1(lid:'ola'; v: 'ola')) ['ola']   [A]
+//%(c:C)(L1(lid:b.value; v:b.value)) ['ola']   [A] 
+//(y:Y) (L0) [{v=b.value }]   [A]
 (y:Y) (L0) [?:{v: String }]   [A]
 ;
-//  a -->+c
-b -->+ c
 y -->> {
-    (yinfo:info)(L1(lid:'ola'))[{id: @trigger.value.v}][A]
-    (create:create)(L1(lid:'ola'))[?:{cid:String}][A] 
+    (yinfo:info)(L1(lid:'ola'; v:b.value))[{id= @trigger.value.v}][A]
+    (create:create)(L1(lid:'ola'; v:b.value))[?:{cid:String}][A] 
     ;
     create -->> {
         //#erro valueExprId( o event que originou o spawn) é d ???
-        (new:new)(L1(lid:@trigger.value.cid))[{nid:@trigger.value.cid}][A] 
-        ;
+        //(new:new)(L1(lid: @trigger.value.cid ; v: 'ola'))[{nid=@trigger.value.cid}][A] 
+        (new:new)(L1(lid: @trigger.value.cid; v: 'ola'))[{nid='ola'}][A] 
+       ;
         new -->> {
-            (d:d)(L1(lid:yinfo.value.id))[{did: @trigger.value.nid}][A]
+           (d:d)(L1(lid:yinfo.value.id; v: @trigger.value.nid))[{did=0}][A]
             
-           // a -->+ b
         }
     }
 }

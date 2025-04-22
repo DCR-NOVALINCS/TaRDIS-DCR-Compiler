@@ -13,7 +13,7 @@ L0 flows L1
 L1 flows L2
 ;
 (a:X) (L1) [2]  [L0]
-(y:Y) (L2) [{value: a}]   [L0] 
+(y:Y) (L2) [{value= a}]   [L0] 
 (b:B) (L0) [true]   [L0]
 %(c:C)(L1) [true]   [L0]
 ;
