@@ -168,7 +168,7 @@
 
   and relation =
     | ControlRelation of event_id' * expr' * event_id' * relation_type'
-    | SpawnRelation of event_id' * expr' * spawn_program
+    | SpawnRelation of event_id' * identifier * expr' * spawn_program
 
   (*
     =============================================================================

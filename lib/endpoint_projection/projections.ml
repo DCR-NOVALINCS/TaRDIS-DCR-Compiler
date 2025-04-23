@@ -2327,7 +2327,7 @@ and project_relations (ctxt : ProjectionContext.t)
       (* delay ctrl-flow relations until all spawn relations are projected, and
          on the recursion's way up *)
       Ok ctxt
-    | Choreo.SpawnRelation (src_id', _expr', spawn_program) -> begin
+    | Choreo.SpawnRelation (src_id', _,  _expr', spawn_program) -> begin
       (* TODO include guard in relations *)
       let src = Env.find_flat_opt src_id'.data ctxt.projected_events_env in
       (* reminder: depending on the role, we might not have a projection for

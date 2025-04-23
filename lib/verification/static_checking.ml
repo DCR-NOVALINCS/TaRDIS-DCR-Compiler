@@ -1,4 +1,4 @@
-module Choreo = Frontend.Syntax
+(* module Choreo = Frontend.Syntax
 open Choreo
 open Sat
 open Utils.Env
@@ -1193,4 +1193,4 @@ and concat_list list loc lattice sec_params env :
            lattice
            sec_params
            env)
-  end
+  end *)
