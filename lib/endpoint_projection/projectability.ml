@@ -438,14 +438,14 @@ end = struct
   exception Internal_error of string
 
   let to_string ?(indent = "") t =
-    let base = Printf.sprintf "  base:\n%s" @@ CnfRole.to_string t.base
-    and group = Printf.sprintf "  group:\n%s" @@ CnfRole.to_string t.group
-    and users = Printf.sprintf "  users:\n%s" @@ CnfRole.to_string t.users
+    let base = Printf.sprintf "  base: %s" @@ CnfRole.to_string t.base
+    and group = Printf.sprintf " group: %s" @@ CnfRole.to_string t.group
+    and users = Printf.sprintf " users: %s" @@ CnfRole.to_string t.users
     and defined_aliases =
       StringMap.bindings t.defined_aliases
       |> List.map (fun (k, v) -> Printf.sprintf "%s->%s" k v)
       |> String.concat ", "
-      |> Printf.sprintf "defined_aliases: %s"
+      |> Printf.sprintf " defined_aliases: %s"
     in
     Printf.sprintf
       "\n%s{ %s\n%s;  %s\n%s;  %s\n%s;  %s\n%s}"
@@ -528,19 +528,19 @@ end = struct
       List.iter (fun r -> CnfRole.to_string r |> print_endline) all_sat;
       assert false; *)
       (* note: we know what we encoded, this must result in a valid role *)
-      let group =
-        Option.get @@ CnfRole.resolve_role_union left.group right.group
-      in
-      print_endline @@ sprintf "\ngroup:\n%s\n"
-      @@ CnfRole.to_string ~indent:"  " group;
-
+      
       (* assert false; *)
       let base =
         Option.get @@ CnfRole.resolve_role_union left.base right.base
       in
-      print_endline @@ sprintf "\nbase:\n%s\n"
-      @@ CnfRole.to_string ~indent:"  " base;
-
+      (* print_endline @@ sprintf "\nbase:\n%s\n"
+      @@ CnfRole.to_string ~indent:"  " base; *)
+      
+      let group =
+        Option.get @@ CnfRole.resolve_role_union left.group right.group
+      in
+      (* print_endline @@ sprintf "\ngroup:\n%s\n"
+      @@ CnfRole.to_string ~indent:"  " group; *)
       let free_params_common =
         StringSet.inter (_extract_free_params left) (_extract_free_params right)
       in
@@ -551,8 +551,8 @@ end = struct
           (* unify free params under common param_sym  *)
           Option.get @@ CnfRole.resolve_role_union left.users right.users
       in
-      print_endline @@ sprintf "\nusers:\n%s\n"
-      @@ CnfRole.to_string ~indent:"  " users;
+      (* print_endline @@ sprintf "\nusers:\n%s\n"
+      @@ CnfRole.to_string ~indent:"  " users; *)
 
       let defined_aliases =
         StringMap.union
@@ -896,7 +896,7 @@ end = struct
         |> String.concat ", ")
     in
     sprintf
-      "\n%s{ %s%s\n%s;  %s\n%s; %s\n%s; %s\n%s;  %s\n%s}\n"
+      "%s{ %s%s\n%s; %s\n%s; %s\n%s; %s\n%s; %s\n%s}"
       indent
       indent
       uid
@@ -1212,9 +1212,9 @@ and process_events (ctxt : Context.t) (events : Choreo.event' list) =
     let trigger_ctxt, event_ctxt =
       EventCtxt.init ctxt.Context.trigger_ctxt ~uid ~id ~initiator ~receivers
     in
-    print_endline " >>>>>>>>>>>>>> processed event ";
+    print_endline "\n>>>>>>>>>>>>>> @projectability.ml [processed event] ";
     print_endline @@ EventCtxt.to_string event_ctxt;
-    print_endline " <<<<<<<<<<<<<< ";
+    print_endline "<<<<<<<<<<<<<< ";
     let ctxt = Context.on_event trigger_ctxt event_ctxt ctxt in
     (* print_endline
        @@ Printf.sprintf

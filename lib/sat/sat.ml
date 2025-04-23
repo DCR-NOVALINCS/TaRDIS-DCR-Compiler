@@ -125,7 +125,7 @@ and unparse_cnf_clause clause =
 
 and unparse_cnf_formula (cnf : cnf_formula) =
   List.map unparse_cnf_clause cnf
-  |> String.concat "," |> Printf.sprintf "[ %s ]"
+  |> String.concat ", " |> Printf.sprintf "[%s]"
 
 and param_val_compare param1 param2 =
   match (param1, param2) with

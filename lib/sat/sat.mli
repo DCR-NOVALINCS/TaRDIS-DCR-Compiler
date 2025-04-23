@@ -26,6 +26,8 @@ and cnf_formula = cnf_clause list
 
 val unparse_cnf_formula : cnf_formula -> string
 
+val cnf_clause_compare : cnf_clause -> cnf_clause -> int
+
 val cnf_sat_solve : cnf_formula -> cnf_formula option
 
 val cnf_all_sat_solve : cnf_formula -> cnf_formula list

@@ -23,7 +23,7 @@ module CnfRole : sig
       (encoding-only, no solving). Requires equally-labelled roles. **)
   val of_intersection : t -> t -> t
 
-  val to_string : ?indent:string -> t -> string
+  val to_string : ?indent:string -> ?abbreviated:bool -> t -> string
 
   val resolve_role_diff : t -> t -> t option
 
@@ -85,7 +85,19 @@ end = struct
         (Invalid_arguments "Role intersection requires equally-labelled roles.")
     else { left with encoding = cnf_and left.encoding right.encoding }
 
-    let to_string ?(indent = "") ({ label; param_types; encoding } as t : t) =
+  let to_string ?(indent = "") ?(abbreviated=true) ({ label; param_types; encoding } as t : t) =
+    let sprintf = Printf.sprintf in
+    let unparse_ty_expr t = Frontend.Unparser.unparse_type_expr (annotate t) in
+    StringMap.bindings param_types
+    |> List.map (fun (label, ty) -> sprintf "%s:%s" label (unparse_ty_expr ty))
+    |> String.concat "; "
+    |> fun params -> if abbreviated then 
+      sprintf "%s%s%s" indent label (unparse_cnf_formula encoding)
+  else
+    sprintf "%s%s(%s)%s" indent label params (unparse_cnf_formula encoding)
+
+  (* DETAILED to_string here *)
+  (* let to_string ?(indent = "") ({ label; param_types; encoding } as t : t) =
       let sprintf = Printf.sprintf in
     List.map (fun { label; param_types; encoding } ->
     let unparse_ty_expr t = Frontend.Unparser.unparse_type_expr (annotate t) in
@@ -96,7 +108,7 @@ end = struct
     sprintf "%s%s(%s)%s" indent label params (unparse_cnf_formula encoding)
     )
      (all_sat t)
-    |> String.concat ";\n"
+    |> String.concat ";\n" *)
 
   let rec resolve_role_diff (l_role : cnf_role) (r_role : cnf_role) :
       cnf_role option =
@@ -283,7 +295,6 @@ end = struct
     print_endline @@ to_string left;
     print_endline "right";
     print_endline @@ to_string right; *)
-
     if left.label <> right.label then None
     else
       Option.bind

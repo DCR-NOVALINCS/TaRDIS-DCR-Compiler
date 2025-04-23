@@ -681,7 +681,7 @@ and on_err_named_param_left_undefined_in_sec_label role_label'
 and named_param_left_undefined_in_participant_label role_label'
     undefined_named_param' =
   Printf.sprintf
-    "Paticipant label leaves named parameter '%s' undefined:\n\
+    "Participant label leaves named parameter '%s' undefined:\n\
      \t according to role '%s' declared here -> %s"
     undefined_named_param'.data
     role_label'.data

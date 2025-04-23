@@ -193,6 +193,10 @@ and unparse_user_set_expr = function
   | Initiator event_id' -> Printf.sprintf "@Initiator(%s)" event_id'.data
   | Receiver event_id' -> Printf.sprintf "@Receiver(%s)" event_id'.data
 
+and unparse_user_set_exprs user_set_exprs = 
+  List.map unparse_user_set_expr (deannotate_list user_set_exprs)
+    |> String.concat ", "
+
 and unparse_event_participants participants' =
   match participants'.data with
   | Local initiator' -> unparse_user_set_expr initiator'.data
