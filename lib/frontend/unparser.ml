@@ -279,7 +279,7 @@ and unparse_relations indent abbreviated ctrl_rels =
     match ctrl_rel.data with
     | ControlRelation (id1, guard_expr, id2, rel_type) ->
       unparse_ctrl_relation indent abbreviated id1 guard_expr id2 rel_type
-    | SpawnRelation (id, guard_expr, spawn_program) ->
+    | SpawnRelation (id, _, guard_expr, spawn_program) ->
       unparse_spawn_relation indent abbreviated id guard_expr spawn_program
   in
   let unparsed_rels = List.map unparse_rel ctrl_rels in

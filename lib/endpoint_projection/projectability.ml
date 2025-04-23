@@ -1393,7 +1393,7 @@ and check_relations (ctxt : Context.t) (relations : Choreo.relation' list) =
   (* Process spawn relations exclusively, triggering the projectability-check
      of the implicit spawn programs. *)
   and process_spawn_rels (ctxt : Context.t) = function
-    | SpawnRelation (src_id', _expr', spawn_program) ->
+    | SpawnRelation (src_id', _, _expr', spawn_program) ->
       print_endline "\n\n  spawn \n\n";
       let ctxts = Context.begin_spawn src_id'.data ctxt in
       iter_left_error (check_spawn_program spawn_program) ctxts

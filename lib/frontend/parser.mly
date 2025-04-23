@@ -21,6 +21,35 @@ open Syntax
       Printf.sprintf "uid_%d" !counter
 *)
 
+
+  
+  let trigger_stack = ref []
+
+  let push_trigger trigger_id =
+  print_endline trigger_id;
+    trigger_stack := trigger_id :: !trigger_stack
+    (* trigger_id *)
+  
+  let pop_trigger () =
+    trigger_stack := List.tl !trigger_stack
+  
+  let peek_trigger () =
+    let res = List.hd !trigger_stack in
+    print_endline @@ Printf.sprintf "peek_trigger: %s" res;
+    res
+
+  let resolve_trigger_id trigger_sym = function
+  | Some id' -> 
+   (*Printf.sprintf "%s#%s" trigger_sym id'.data*)
+   let id = Printf.sprintf "%s#%s" trigger_sym id'.data in
+       print_endline @@ Printf.sprintf "renamed id: %s" id;
+       id
+      
+  | None -> let id = List.hd !trigger_stack 
+    in
+ print_endline @@ Printf.sprintf "renamed id: %s" id;
+    id
+
   let unfold_nested_ctrl_rel_decl nested_ctrl_rel =
     let ids_l, rel, ids_r = nested_ctrl_rel.data in
     let (rel_type, guard_expr') = rel.data in
@@ -32,13 +61,21 @@ open Syntax
       (fun id1 -> List.map (fun id2 -> mk_ctrl_relation id1 id2)ids_r) ids_l
     |> List.concat
 
+    (*
   and unfold_nested_spawn_rel_decl nested_spawn_rel =
     let ids_l, guard, spawn_program = nested_spawn_rel.data in
     let mk_spawn_relation id =
       annotate ~loc:nested_spawn_rel.loc @@ SpawnRelation (id, guard, spawn_program)
     in
     List.map (fun id1 -> mk_spawn_relation id1 ) ids_l
+*)
 
+  and unfold_nested_spawn_rel_decl nested_spawn_rel =
+    let ids_l, trigger_label, guard, spawn_program = nested_spawn_rel.data in
+    let mk_spawn_relation id =
+      annotate ~loc:nested_spawn_rel.loc @@ SpawnRelation (id, trigger_label, guard, spawn_program)
+    in
+    List.map (fun id1 -> mk_spawn_relation id1 ) ids_l
 
 let default_marking : event_marking' =
   annotate
@@ -290,12 +327,31 @@ plain_nested_ctrl_rel_decl:
     ids_r =separated_nonempty_list(COMMA, id)              {(ids_l, rel_type, ids_r)}
 ;
 
+spawn_Trig:
+  | id=id; rel_type=spawn_relation_type           
+      // {(id, rel_type)}
+      {push_trigger @@ resolve_trigger_id "@trigger" (Some id); (id, rel_type)}
+;
+
 nested_spawn_rel_decl: mark_loc_ty(plain_nested_spawn_rel_decl) {$1}
 plain_nested_spawn_rel_decl:
-  | ids_l = separated_nonempty_list(COMMA, id);
-    rel_type = spawn_relation_type;
-    prog=delimited(LBRACE, plain_program_spawn, RBRACE)    {(ids_l, rel_type, prog)}
+  | spawn_trigg = spawn_Trig;
+    prog=delimited(LBRACE, plain_program_spawn, RBRACE)    
+    {let (ids_l, rel_type) = spawn_trigg in ([ids_l], peek_trigger (),rel_type, prog)}
+    // prog=delimited(LBRACE, plain_program_spawn, RBRACE)    {let (ids_l, rel_type) = spawn_trigg in ([ids_l], rel_type, prog)}
 ;
+
+// nested_spawn_rel_decl: mark_loc_ty(plain_nested_spawn_rel_decl) {$1}
+// plain_nested_spawn_rel_decl:
+//   | ids_l = separated_nonempty_list(COMMA, id);
+//     rel_type = spawn_relation_type;
+//     prog=delimited(LBRACE, plain_program_spawn, RBRACE)    {(ids_l, rel_type, prog)}
+// ;
+
+
+// | id = spawn_Trig;
+//   rel_type = spawn_relation_type;
+//   prog=delimited(LBRACE, plain_program_spawn, RBRACE)    {(ids_l, rel_type, prog)}
 
 ctrl_relation_type: mark_loc_ty(plain_ctrl_relation_type) {$1}
 plain_ctrl_relation_type:
@@ -383,8 +439,10 @@ plain_user_set_role_expr_param_val_fact:
 | INT                                      { IntLit($1) }
 | STR                                      { StringLit($1) }
 | id                                       { EventRef($1) } 
-| TRIGGER                                  { Trigger($1) }
-| expr = user_set_role_expr_param_val_fact; PROP_DEREF; prop = id      { PropDeref(expr, prop) }
+| TRIGGER                                  { Trigger( resolve_trigger_id $1 None) }
+// | trigger=TRIGGER; HASHTAG id=id            { Trigger( resolve_trigger_id trigger (Some id))}
+| expr = user_set_role_expr_param_val_fact; PROP_DEREF; prop = id      {
+   PropDeref(expr, prop) }
 ;
 
 node_marking: mark_loc_ty(plain_node_marking) {$1}
@@ -488,7 +546,8 @@ plain_fact:
 | INT                                                                             { IntLit($1) }
 | STR                                                                             { StringLit($1) }
 | id                                                                              { EventRef($1) } 
-| TRIGGER                                                                         { Trigger($1) }
+| TRIGGER                                  { Trigger( resolve_trigger_id $1 None) }
+// | trigger=TRIGGER; HASHTAG id=id             { Trigger( resolve_trigger_id trigger (Some id))}
 | delimited(LBRACE, separated_nonempty_list(SEMICOLON, record_field), RBRACE)         { Record($1) }
 | expr = fact; PROP_DEREF; prop = id;                                             { PropDeref(expr, prop) }
 ;

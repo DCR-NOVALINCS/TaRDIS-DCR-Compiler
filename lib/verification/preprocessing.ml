@@ -478,7 +478,7 @@ and preprocess_relation ctxt relation =
       | Error err -> Error err
       | Ok _ -> Ok { ctxt with relations = (relation, env) :: ctxt.relations })
   end
-  | SpawnRelation (id, guard, spawn_progr) -> (
+  | SpawnRelation (id, trigger_label, guard, spawn_progr) -> ( 
     match Env.find_flat_opt id.data env with
     | None -> unknown_event_reference_err id
     | Some uid -> (
@@ -489,7 +489,8 @@ and preprocess_relation ctxt relation =
         let ctxt =
           { ctxt with
             relations = (relation, env) :: ctxt.relations
-          ; uid_env = Utils.Env.bind "@trigger" uid @@ Env.begin_scope env
+          (* ; uid_env = Utils.Env.bind "@trigger" uid @@ Env.begin_scope env *)
+          ; uid_env = Utils.Env.bind trigger_label uid @@ Env.begin_scope env
           }
         and type_aliases_map =
           (List.assoc uid ctxt.event_nodes_by_uid).userset_alias_types

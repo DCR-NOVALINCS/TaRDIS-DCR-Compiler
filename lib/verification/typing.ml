@@ -514,7 +514,7 @@ and typecheck_security_levels (ctxt : typechecheck_context) =
 and typecheck_relations ctxt =
   let typecheck_relation ctxt (relation, env) =
     let extract_guard = function
-      | ControlRelation (_, guard, _, _) | SpawnRelation (_, guard, _) -> guard
+      | ControlRelation (_, guard, _, _) | SpawnRelation (_, _, guard, _) -> guard
     and validate_typecheck_res = function
       | Error err -> Error ((relation.loc, bad_expr_in_relation_guard) :: err)
       | Ok { t_expr = BoolTy; _ } -> Ok ctxt
