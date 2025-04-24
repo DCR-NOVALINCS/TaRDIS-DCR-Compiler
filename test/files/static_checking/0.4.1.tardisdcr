@@ -21,7 +21,10 @@ L2 flows L3
 (spawn:Y) (L0) [?:{v: String }]   [A]
 ;
 spawn -->> {
-    (yinfo:info)(L1(lid:'ola'; v:b.value))[{id= @trigger.value.v}][A]
+    //@trigger_5 (L0)
+
+    //find_opt @trigger L0
+    (yinfo:info)(L1(lid:'ola'; v:b.value))[{id= @trigger.value.v}][A] 
     (spawn2:create)(L1(lid:'ola'; v:b.value))[?:{cid:String}][A] 
     ;
     spawn2 -->> {
@@ -33,5 +36,6 @@ spawn -->> {
             (d:d)(L1(lid:@trigger.value; v: 'ola'))[{did=0}][A]
         }
     }
+
 }
 

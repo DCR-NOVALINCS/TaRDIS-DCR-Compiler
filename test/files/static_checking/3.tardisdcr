@@ -3,6 +3,9 @@
 //  ---------------------------------------------- #
 //  description:  Testing params #
 //  ---------------------------------------------- #
+//# @trigger.value == @trigger.value.cid
+// #spawn3.value == spawn2.value.cid
+//#uuid com o trigger;
 //  expected: Equal to 0.1                       #
 //  ============================================== #
 A
@@ -14,8 +17,8 @@ A flows L0
 L0 flows L1
 L1 flows L2
 ;
-(b:B) (L1(lid:'ola'; v: 'ola')) ['ola']   [A]
-(spawn:Y) (L0) [?:{v: String }]   [A] 
+(b:B) (L1(lid:'ola'; v: 'ola')) ['ola'] [A]
+(spawn:Y) (L0) [?:{v: String }]  [A] 
 ;
 spawn -->> {
     (yinfo:info)(L1(lid:'ola'; v:b.value))[{id= @trigger.value.v}][A]
@@ -23,15 +26,10 @@ spawn -->> {
     ;
     spawn2 -->> {
         (spawn3:new)(L1(lid: @trigger.value.cid ; v: 'ola'))[@trigger.value.cid][A] 
-
         ;
         spawn3 -->> {
             (d:d)(L1(lid:@trigger.value; v: 'ola'))[?][A] 
-
-               # @trigger.value == @trigger.value.cid
-                #spawn3.value == spawn2.value.cid
-
-                #uuid com o trigger;
+            
         }
     }
 }

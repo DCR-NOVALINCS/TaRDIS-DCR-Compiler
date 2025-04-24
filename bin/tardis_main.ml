@@ -36,6 +36,7 @@ let parse_verify_program lexbuf =
   let open Verification in
   let open Utils.Results in
   parse_program lexbuf >>= fun program ->
+  print_endline @@ Frontend.Unparser.unparse_prog program;
   Preprocessing.preprocess_program program >>= fun preprocessing_res ->
   Typing.check_program preprocessing_res >>= fun typecheck_res ->
   print_endline "Typecheck succeeded.";
@@ -46,7 +47,7 @@ let process_choreography lexbuf =
   let open Endpoint_projection in
   parse_verify_program lexbuf >>= fun (typecheck_res, program) ->
   Verification.Static_checking.check_static_information_security program
-  >>= fun () ->
+  >>= fun _ ->
   Frontend.Unparser.unparse_prog ~abbreviated:true program
   (* exceptions may occurr here due to IO - currently ignoring these *)
   |> unparse_to_file "output_tardis.tardisdcr";

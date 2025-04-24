@@ -229,8 +229,8 @@ let rec evalExpr expr env : Local.evalExpr =
   | PropDeref (e, prop) -> (
       let rec evalProp e prop env : ('a, 'b) Local.resultExpr =
         match e.data with
-        | Trigger _ -> (
-            match find_flat_opt _TRIGGER env with
+        | Trigger t -> (
+            match find_flat_opt t env with
             | None -> Local.Error (e.loc, "Trigger Event does not exist")
             | Some node -> (
                 match node.io with
@@ -272,9 +272,6 @@ let rec evalExpr expr env : Local.evalExpr =
       | Unknown -> Unknown
       | Error s -> Local.Error s)
   | _ -> failwith "Unhandled expression case: "
-
-let rec build_trigger_exp exp = 
-  
 
 let rec check_static_information_security program =
   let global_program : spawn_program ref =
@@ -369,19 +366,19 @@ and retrive_security_of_events (events, crs)
     let create_new_event event =
       let event_expr = event.data_expr.data in
       let sec = event.security_level.data in
-      
-      List.fold_left (fun new_sec lvl -> 
-        let id, list_params = lvl.data in
-        begin match list_params with
-        | [] -> lvl::new_sec
-        | params -> 
-        end) [] sec
+      sec
+      (* List.fold_left (fun new_sec lvl ->
+         let id, list_params = lvl.data in
+         begin match list_params with
+         | [] -> lvl::new_sec
+         | params ->
+         end) [] sec *)
       (* let new_event = *)
-        (* { event with data = { } } *)
+      (* { event with data = { } } *)
       (* in *)
       (* new_event *)
-
     in
+
     let event_data = event.data in
     let id, label = event_data.info.data in
     global_label_SC :=
@@ -407,7 +404,7 @@ and retrive_security_of_events (events, crs)
   let process_spawn_relation cr (env, level_map, sec_parms, new_program) =
     match cr.data with
     | ControlRelation _ -> Ok (env, level_map, sec_parms, new_program)
-    | SpawnRelation (_, _, prog) ->
+    | SpawnRelation (_, _, _, prog) ->
         retrive_security_of_events
           (prog.events, prog.relations)
           (begin_scope env, level_map, sec_parms, new_program)
@@ -446,7 +443,7 @@ and get_security_of_expr expr env lattice sec_params simbolic_env =
       | None -> Error [ (id.loc, "Error in static check expr " ^ id.data) ]
       | Some node -> Ok node.security_list)
   | Trigger t -> (
-      match find_flat_opt _TRIGGER env with
+      match find_flat_opt t env with
       | None -> Error [ (expr.loc, "Error in static check trigger " ^ t) ]
       | Some sec_node -> Ok sec_node.security_list)
   | PropDeref (expr, _) ->
@@ -554,7 +551,7 @@ and check_security_relation cr (env, lattice, sec_params, simbolic_env) =
                   print_endline @@ unparse_cnf_formula e;
                   exp.ifc := Some true;
                   verify_relations_events ())))
-  | SpawnRelation (event, exp, prog) -> (
+  | SpawnRelation (event, trigger_label, exp, prog) -> (
       match get_security_of_expr exp env lattice sec_params simbolic_env with
       | Error err ->
           Error ((exp.loc, "Error in event expression " ^ event.data) :: err)
@@ -563,7 +560,7 @@ and check_security_relation cr (env, lattice, sec_params, simbolic_env) =
           | None -> Error [ (cr.loc, "Error finding event: " ^ event.data) ]
           | Some node -> (
               let spawn_creation () =
-                let spawn_env = bind _TRIGGER node @@ begin_scope env in
+                let spawn_env = bind trigger_label node @@ begin_scope env in
                 match
                   check_security_graph
                     (prog.events, prog.relations)
@@ -994,7 +991,7 @@ and compareSecurityLevels (node1 : sec_label') (node2 : sec_label') params env
     let p = and_list listResult in
     p
   in
-  let open Frontend in
+  (* let open Frontend in *)
   match (node1.data, node2.data) with
   | (s1, list_params1), (s2, list_params2)
     when String.compare s1.data s2.data = 0 -> (

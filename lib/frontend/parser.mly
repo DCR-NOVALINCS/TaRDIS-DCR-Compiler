@@ -71,6 +71,7 @@ open Syntax
 *)
 
   and unfold_nested_spawn_rel_decl nested_spawn_rel =
+
     let ids_l, trigger_label, guard, spawn_program = nested_spawn_rel.data in
     let mk_spawn_relation id =
       annotate ~loc:nested_spawn_rel.loc @@ SpawnRelation (id, trigger_label, guard, spawn_program)
@@ -317,7 +318,7 @@ plain_ctrl_relation_decl_list:
 
 plain_nested_relation_decls:
   | nested_ctrl_rel_decl    {unfold_nested_ctrl_rel_decl $1}
-  | nested_spawn_rel_decl   {unfold_nested_spawn_rel_decl $1}
+  | nested_spawn_rel_decl   {pop_trigger (); unfold_nested_spawn_rel_decl $1}
 ;
 
 nested_ctrl_rel_decl: mark_loc_ty(plain_nested_ctrl_rel_decl) {$1}
