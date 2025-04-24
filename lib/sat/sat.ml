@@ -124,8 +124,7 @@ and unparse_cnf_clause clause =
   |> String.concat ", " |> Printf.sprintf "[%s]"
 
 and unparse_cnf_formula (cnf : cnf_formula) =
-  List.map unparse_cnf_clause cnf
-  |> String.concat ", " |> Printf.sprintf "[%s]"
+  List.map unparse_cnf_clause cnf |> String.concat ", " |> Printf.sprintf "[%s]"
 
 and param_val_compare param1 param2 =
   match (param1, param2) with
@@ -335,8 +334,8 @@ module SolutionSet = struct
         val_opt <> Some expr
     in
     let constraints = simplify sol.constraints in
+    (* print_endline @@ Printf.sprintf "@sat_check: constraints= %s" (unparse_cnf_clause constraints); *)
     if List.for_all checks_out constraints then Sat sol else Unsat
-  (* if List.for_all checks_out sol.constraints then Sat sol else Unsat *)
 
   let init (symbols : identifier list) : t =
     let solution =
@@ -392,9 +391,8 @@ module SolutionSet = struct
     let sol =
       match sol with
       | Sat sol -> begin
-        let constraints = lit :: sol.constraints |> simplify in
-        let sol = { sol with constraints } in
-        let syms = extract_lit_symbols lit in
+        let sol = { sol with constraints = lit :: sol.constraints |> simplify }
+        and syms = extract_lit_symbols lit in
         if
           not
             (List.fold_left (fun acc s -> acc && List.mem s sol.syms) true syms)
@@ -417,7 +415,8 @@ module SolutionSet = struct
           | Negative (CnfSymEq (s1, s2)) ->
             let r1 = DisjointSet.find s1 sol.connected
             and r2 = DisjointSet.find s2 sol.connected in
-            if r1 = r2 then Unsat else Sat sol
+            (* if r1 = r2 then Unsat else Sat sol *)
+            if r1 = r2 then Unsat else sat_check sol
           | Positive (CnfEq (s, expr)) ->
             let r = DisjointSet.find s sol.connected in
             begin
@@ -427,7 +426,10 @@ module SolutionSet = struct
             end
           | Negative (CnfEq (s, expr)) ->
             let r = DisjointSet.find s sol.connected in
-            if List.assoc r sol.values <> Some expr then Sat sol else Unsat
+            (* TODO [revisit] *)
+            (* if List.assoc r sol.values <> Some expr then Sat sol else Unsat *)
+            if List.assoc r sol.values <> Some expr then Sat sol
+            else sat_check sol
         end
       end
       | Unsat -> Unsat
@@ -526,6 +528,7 @@ and cnf_sat_solve (cnf : cnf_formula) : cnf_formula option =
 (* variant of cnf_sat_solve - return every solution found
    TODO decide on merging with flag or keeping separate with fatorizations *)
 and cnf_all_sat_solve (cnf : cnf_formula) : cnf_formula list =
+  (* print_endline @@ Printf.sprintf "cnf_all_sat_solve called with %s" (unparse_cnf_formula cnf); *)
   let bind_sol some = function
     | SolutionSet.Unsat -> None
     | SolutionSet.Sat _ as sol -> some sol
@@ -610,6 +613,18 @@ and cnf_all_sat_solve (cnf : cnf_formula) : cnf_formula list =
       (* |> List.map (List.sort_uniq cnf_clause_compare) *)
       |> List.map cnf_simplify
       (* |> List.map cnf_factorize *))
+
+and cnf_entails (cnf_formula : cnf_formula) (cnf_clause : cnf_clause) =
+  (* print_endline @@ Printf.sprintf "@cnf_entails - kb: %s" (unparse_cnf_formula cnf_formula);
+  print_endline @@ Printf.sprintf "@cnf_entails - clause: %s" (unparse_cnf_formula [cnf_clause]);
+  let negated = cnf_neg [cnf_clause] in
+  print_endline @@ Printf.sprintf "@cnf_entails - negated clause: %s" (unparse_cnf_formula negated);
+  let res = List.is_empty @@ cnf_all_sat_solve @@ cnf_and cnf_formula @@ cnf_neg [cnf_clause]
+in 
+print_endline @@ Printf.sprintf "entails is %b" res;
+res *)
+  List.is_empty @@ cnf_all_sat_solve @@ cnf_and cnf_formula
+  @@ cnf_neg [ cnf_clause ]
 
 and is_unit_clause clause = List.length clause = 1
 
