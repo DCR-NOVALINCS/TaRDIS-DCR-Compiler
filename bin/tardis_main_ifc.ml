@@ -51,10 +51,10 @@ let process_choreography lexbuf =
   Frontend.Unparser.unparse_prog ~abbreviated:true program
   (* exceptions may occurr here due to IO - currently ignoring these *)
   |> unparse_to_file "output_tardis.tardisdcr";
-  Projectability.check program typecheck_res >>= fun () ->
+  (* Projectability.check program typecheck_res >>= fun () -> *)
   (* TODO [post-demo] have projections return something more friendly than the
      entire projection context - need to check what's needed first *)
-  Projections.project program >>= fun _projection_ctxts ->
+  (* Projections.project program >>= fun _projection_ctxts -> *)
   Ok ()
 (* let babel_unparsed = List.map (Babel.Unparser.babel_unparse
    event_types_by_label) projection_ctxts in *)

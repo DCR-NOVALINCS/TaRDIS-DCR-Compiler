@@ -85,16 +85,17 @@ end = struct
         (Invalid_arguments "Role intersection requires equally-labelled roles.")
     else { left with encoding = cnf_and left.encoding right.encoding }
 
-  let to_string ?(indent = "") ?(abbreviated=true) ({ label; param_types; encoding } as t : t) =
+  let to_string ?(indent = "") ?(abbreviated = true)
+      ({ label; param_types; encoding } as t : t) =
     let sprintf = Printf.sprintf in
     let unparse_ty_expr t = Frontend.Unparser.unparse_type_expr (annotate t) in
     StringMap.bindings param_types
     |> List.map (fun (label, ty) -> sprintf "%s:%s" label (unparse_ty_expr ty))
     |> String.concat "; "
-    |> fun params -> if abbreviated then 
+    |> fun params ->
+    if abbreviated then
       sprintf "%s%s%s" indent label (unparse_cnf_formula encoding)
-  else
-    sprintf "%s%s(%s)%s" indent label params (unparse_cnf_formula encoding)
+    else sprintf "%s%s(%s)%s" indent label params (unparse_cnf_formula encoding)
 
   (* DETAILED to_string here *)
   (* let to_string ?(indent = "") ({ label; param_types; encoding } as t : t) =

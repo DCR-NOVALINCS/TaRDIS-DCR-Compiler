@@ -15,7 +15,7 @@ let unparse_to_file file' res =
    close_out oc *)
 
 let print_errors errors =
-  let open Frontend.Syntax in
+  let open Frontend.Syntax in  
   print_endline "\n== COMPILATION FAILED ==\n  Terminated with errors: ";
   List.iter
     (fun (loc, msg) ->
@@ -46,8 +46,8 @@ let process_choreography lexbuf =
   let open Utils.Results in
   let open Endpoint_projection in
   parse_verify_program lexbuf >>= fun (typecheck_res, program) ->
-  Verification.Static_checking.check_static_information_security program
-  >>= fun _ ->
+  (* Verification.Static_checking.check_static_information_security program
+  >>= fun _ -> *)
   Frontend.Unparser.unparse_prog ~abbreviated:true program
   (* exceptions may occurr here due to IO - currently ignoring these *)
   |> unparse_to_file "output_tardis.tardisdcr";

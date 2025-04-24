@@ -19,6 +19,26 @@
  (preprocessor_deps
   (file resources/input_babel.java)))
 
+(executable
+ (public_name tardis_ifc)
+ (name tardis_main_ifc)
+ (modules tardis_main_ifc)
+ (libraries str utils verification endpoint_projection translation)
+ (preprocess
+  (pps ppx_blob))
+ (preprocessor_deps
+  (file resources/input_babel.java)))
+
+(executable
+ (public_name tardis_projection)
+ (name tardis_main_projection)
+ (modules tardis_main_projection)
+ (libraries str utils verification endpoint_projection translation)
+ (preprocess
+  (pps ppx_blob))
+ (preprocessor_deps
+  (file resources/input_babel.java)))
+
 ; (executable
 ;  (name reda_translate)
 ;  (modules reda_translate)
