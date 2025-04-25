@@ -54,7 +54,7 @@ let process_choreography lexbuf =
   Projectability.check program typecheck_res >>= fun () ->
   (* TODO [post-demo] have projections return something more friendly than the
      entire projection context - need to check what's needed first *)
-  Projections.project program >>= fun _projection_ctxts ->
+  Projections.project program |> fun _projection_ctxts ->
   Ok ()
 (* let babel_unparsed = List.map (Babel.Unparser.babel_unparse
    event_types_by_label) projection_ctxts in *)

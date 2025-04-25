@@ -1013,8 +1013,8 @@ end = struct
     let sprintf = Printf.sprintf in
     (* and scope_participants_str = participant_map_to_str t.participants_in_scope *)
     let event_ctxt_by_id =
-      Env.string_of_env
-        (EventCtxt.to_string ?indent:(Some " "))
+      Env.to_string
+        ~fmt:(EventCtxt.to_string ?indent:(Some " "))
         t.event_ctxt_by_id
     in
     sprintf "= dependency_graph:\n%s" (DependencyGraph.to_string t.dependencies)

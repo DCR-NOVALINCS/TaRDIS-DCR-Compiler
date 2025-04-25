@@ -38,13 +38,14 @@ open Syntax
     print_endline @@ Printf.sprintf "peek_trigger: %s" res;
     res
 
+  (* TODO change src of @trigger keyword - syntax.ml rather than lexer.mll *)
   let resolve_trigger_id trigger_sym = function
   | Some id' -> 
    (*Printf.sprintf "%s#%s" trigger_sym id'.data*)
-   let id = Printf.sprintf "%s#%s" trigger_sym id'.data in
+   let id = Syntax.trigger_id_of_event_id id'.data in
+  (*)  Printf.sprintf "%s#%s" trigger_sym id'.data in *)
        print_endline @@ Printf.sprintf "renamed id: %s" id;
        id
-      
   | None -> let id = List.hd !trigger_stack 
     in
  print_endline @@ Printf.sprintf "renamed id: %s" id;

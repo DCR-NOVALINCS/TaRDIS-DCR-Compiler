@@ -280,6 +280,14 @@
     | Milestone
     | Response
 
+  let reserved_trigger_sym = "@trigger"
+
+  let hidden_event_prefix = "_"
+
+  let trigger_id_of_event_id event_id =
+    (* Printf.sprintf "_@trigger$%s" event_id *)
+    Printf.sprintf "%s%s$%s" hidden_event_prefix reserved_trigger_sym event_id
+
   (* TODO move somewhere else - debug/log/print *)
   let string_of_pos (pos : Lexing.position) =
     "line "
