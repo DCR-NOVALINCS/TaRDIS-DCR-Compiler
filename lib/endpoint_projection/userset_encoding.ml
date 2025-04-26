@@ -13,7 +13,7 @@ module CnfRole : sig
     }
 
   (** Return a CnfRole.t reflecting the specified role_decl **)
-  val of_role_decl : Choreo.value_dep_role_decl' -> t
+  val of_role_decl : role_decl':Choreo.value_dep_role_decl' -> t
 
   (** Return a CnfRole.t reflecting the union of two cnf-encoded roles
       (encoding-only, no solving). Requires equally-labelled roles. **)
@@ -54,7 +54,7 @@ end = struct
 
   and cnf_role = t
 
-  let of_role_decl (role_decl' : value_dep_role_decl') =
+  let of_role_decl ~(role_decl' : value_dep_role_decl') =
     let label', params = role_decl'.data in
     let param_types =
       List.fold_left
