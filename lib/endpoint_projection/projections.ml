@@ -338,8 +338,6 @@ module TriggerCtxt : sig
 
   val self : t -> CnfRole.t
 
-  
-
   val lookup_binding : identifier -> t -> (string * expr') option
 
   val bindings : t -> (string * expr') StringMap.t
@@ -374,8 +372,9 @@ end = struct
     }
 
   let bootstrap_event_id = "#bootstrap"
+
   and bootstrap_trigger_id = "_@trigger#_"
-  
+
   let init ~(self : CnfRole.t) =
     print_endline
     @@ Printf.sprintf
@@ -383,7 +382,7 @@ end = struct
          (CnfRole.to_string self);
     [ ( bootstrap_event_id
       , { self
-      ; trigger_id = bootstrap_trigger_id
+        ; trigger_id = bootstrap_trigger_id
         ; implicit_bindings = []
         ; trigger_symbols = StringMap.empty
         ; trigger_chain = []
@@ -461,8 +460,8 @@ end = struct
 
   let trigger_exprs (t : t) = (snd (peek t)).trigger_exprs_by_sym
 
-  let begin_scope (trigger_id:identifier) (trigger : Projection.event_t) (t : t) : t =
-    print_endline @@ "\n\n\   <<<<<<<<<<>>>>>>>>>>>  "  ^trigger_id;
+  let begin_scope (trigger_id : identifier) (trigger : Projection.event_t)
+      (t : t) : t =
     let enclosing_scope = snd @@ peek t
     and event_id = (fst trigger.event'.data.info.data).data in
     let self = trigger.self
@@ -477,13 +476,16 @@ end = struct
     and implicit_bindings = trigger.implicit_bindings in
     let exprs_by_sym =
       Env.begin_scope enclosing_scope.exprs_by_sym
-      |> Env.bind_list (StringMap.bindings bindings |> List.map snd)
+      |> Env.bind_list
+           (StringMap.bindings trigger.local_bindings |> List.map snd)
     in
-    print_endline (Utils.Env.to_string ~fmt:Frontend.Unparser.unparse_expr exprs_by_sym); 
+    (* debug *)
+    (* print_endline
+      (Utils.Env.to_string ~fmt:Frontend.Unparser.unparse_expr exprs_by_sym); *)
     push
       ( event_id
       , { self
-      ; trigger_id
+        ; trigger_id
         ; trigger_chain
         ; trigger_symbols
         ; trigger_exprs_by_sym
@@ -509,7 +511,8 @@ module CommunicationCtxt : sig
     ; local_bindings : (string * expr') StringMap.t
     }
 
-  val of_communication_expr : event_id -> participants -> TriggerCtxt.t -> TriggerCtxt.t * t
+  val of_communication_expr :
+    event_id -> participants -> TriggerCtxt.t -> TriggerCtxt.t * t
 
   val to_string : t -> string
 end = struct
@@ -573,7 +576,10 @@ end = struct
   (* TODO [revisit] (strategy and constants) *)
   (* Encode '_@trigger.initiator.<param>' prop-deref expr *)
   let encode_trigger_init_param_deref_expr event_id named_param' =
-    let trigger_ref_expr' = annotate (EventRef (annotate (Frontend.Syntax.trigger_id_of_event_id event_id))) in
+    let trigger_ref_expr' =
+      annotate
+        (EventRef (annotate (Frontend.Syntax.trigger_id_of_event_id event_id)))
+    in
     let param_name', value' = named_param'.data in
     let type_info = Option.get !(value'.ty) in
     let init_deref_expr' =
@@ -725,13 +731,15 @@ end = struct
     let role', params = role_expr'.data in
     List.fold_left
       (fun (trigger_ctxt, local_bindings, role_ctxt) named_param' ->
-        encode_named_param event_id
+        encode_named_param
+          event_id
           (trigger_ctxt, role_ctxt, local_bindings)
           named_param')
       (trigger_ctxt, local_bindings, RoleCtxt.init_empty role'.data)
       params
 
-  let encode_user_set_expr event_id (trigger_ctxt, local_bindings) user_set_expr' =
+  let encode_user_set_expr event_id (trigger_ctxt, local_bindings)
+      user_set_expr' =
     let to_role_ctxts cnf_roles =
       List.map
         (fun role ->
@@ -745,7 +753,10 @@ end = struct
     in
     match user_set_expr'.data with
     | RoleExpr role_expr' ->
-      user_set_role_expr_to_role_ctxt event_id (trigger_ctxt, local_bindings) role_expr'
+      user_set_role_expr_to_role_ctxt
+        event_id
+        (trigger_ctxt, local_bindings)
+        role_expr'
       |> fun (a, b, c) -> (a, b, [ c ])
     | Initiator event_id' ->
       let init_set =
@@ -758,11 +769,15 @@ end = struct
       in
       (trigger_ctxt, local_bindings, rcv_set)
 
-  let encode_user_set_exprs event_id (trigger_ctxt, local_bindings) user_set_exprs =
+  let encode_user_set_exprs event_id (trigger_ctxt, local_bindings)
+      user_set_exprs =
     List.fold_left
       (fun (trigger_ctxt, local_bindings, role_ctxts) user_set_expr' ->
         let trigger_ctxt, local_bindings, roles =
-          encode_user_set_expr event_id (trigger_ctxt, local_bindings) user_set_expr'
+          encode_user_set_expr
+            event_id
+            (trigger_ctxt, local_bindings)
+            user_set_expr'
         in
         ( trigger_ctxt
         , local_bindings
@@ -774,17 +789,6 @@ end = struct
       (trigger_ctxt, local_bindings, StringMap.empty)
       user_set_exprs
 
-  (* let event = List.assoc event_id'.data ctxt.trigger_chain in
-      begin
-        match event.communication with
-        | Local -> (* assume typechecking handled this (TODO) **) assert false
-        | Tx receivers -> (ctxt, StringMap.bindings receivers |> List.map snd)
-        | Rx _ -> (ctxt, [ event.self ])
-      end *)
-  (* ------------- *)
-  (* | Diff (_roles_l, _roles_r) -> assert false *)
-
-  (* TODO *)
   let of_communication_expr event_id (participants : Choreo.participants)
       (trigger_ctxt : TriggerCtxt.t) : TriggerCtxt.t * t =
     let trigger_ctxt, local_bindings, init_ctxt, rcv_ctxt, init_set, rcv_set =
@@ -793,7 +797,10 @@ end = struct
         | Choreo.Interaction (init', recvrs) -> (init', recvrs) )
       |> fun (initrs, rcvrs) ->
       let trigger_ctxt, local_bindings, initiators =
-        encode_user_set_exprs event_id (trigger_ctxt, StringMap.empty) [ initrs ]
+        encode_user_set_exprs
+          event_id
+          (trigger_ctxt, StringMap.empty)
+          [ initrs ]
       in
       let trigger_ctxt, local_bindings, receivers =
         encode_user_set_exprs event_id (trigger_ctxt, local_bindings) rcvrs
@@ -801,13 +808,6 @@ end = struct
       (trigger_ctxt, local_bindings, initiators, receivers, [ initrs ], rcvrs)
     in
     (trigger_ctxt, { local_bindings; init_ctxt; rcv_ctxt; init_set; rcv_set })
-
-  (* TODO *)
-  (* let lookup_initiator_role (role : role_label) : RoleCtxt.t option =
-    Option.None
-
-  (* TODO *)
-  let lookup_receiver_role (role : role_label) : RoleCtxt.t option = Option.None *)
 end
 
 (** [list_combine f [a1; ...; an] [b1; ...; bm]] returns the list
@@ -1013,8 +1013,10 @@ module ProjectionContext = struct
     in
     { ctxt with control_flow_candidates_stack } *)
 
-  let begin_scope (trigger_id:identifier) (trigger : Projection.event_t) (ctxt : t) =
-    let trigger_ctxt = TriggerCtxt.begin_scope trigger_id trigger ctxt.trigger_ctxt
+  let begin_scope (trigger_id : identifier) (trigger : Projection.event_t)
+      (ctxt : t) =
+    let trigger_ctxt =
+      TriggerCtxt.begin_scope trigger_id trigger ctxt.trigger_ctxt
     and (projection : Projection.program list) =
       { events = []; relations = [] } :: ctxt.projection
     (* new scope to accumulate projected events - used to decide the relations
@@ -1236,20 +1238,41 @@ and project_events ctxt (events : Choreo.event' list) : ProjectionContext.t =
          event_id
          (CnfRole.to_string self);
 
+    let filter_out_abstract_self_marker (self_role : CnfRole.t) =
+      print_endline
+      @@ Printf.sprintf "before cleaning: %s" (CnfRole.to_string self_role);
+      let encoding =
+        List.filter
+          (fun x ->
+            x <> [ Positive (CnfEq ("@self", BoolLit true)) ]
+            && x <> [ Negative (CnfEq ("@self", BoolLit true)) ])
+          self_role.encoding
+      in
+      let self_role = { self_role with encoding } in
+      print_endline
+      @@ Printf.sprintf "after cleaning: %s" (CnfRole.to_string self_role);
+      self_role
+    in
+
+    let add_self_marker (role : CnfRole.t) =
+      let encoding =
+        List.sort_uniq
+          cnf_clause_compare
+          (cnf_and
+             role.encoding
+             [ [ Positive (CnfEq ("@self", BoolLit true)) ] ])
+      in
+      { role with encoding }
+    in
+
     (* Tx/Rx events explicitly exclude @self from the "remote"-side *)
     let exclude_abstract_self (roles : CnfUserset.t) : CnfUserset.t =
       CnfUserset.exclude_role roles abstract_self
-      (* StringMap.find_opt self_role roles
-      |> fold_role ~none:None ~some:(fun role ->
-             CnfRole.resolve_role_diff role abstract_self)
-      |> function
-      | None -> roles
-      | Some diff -> StringMap.add self_role diff roles *)
     in
 
     let trigger_ctxt, communication_ctxt =
       CommunicationCtxt.of_communication_expr
-      event_id
+        event_id
         event'.data.participants.data
         trigger_ctxt
     in
@@ -1267,6 +1290,14 @@ and project_events ctxt (events : Choreo.event' list) : ProjectionContext.t =
     in
 
     let resolve_unify_self (role : CnfRole.t) =
+      print_endline
+      @@ Printf.sprintf
+           "@resolve_unify_self - self = %s"
+           (CnfRole.to_string self);
+      print_endline
+      @@ Printf.sprintf
+           "@resolve_unify_self - role = %s"
+           (CnfRole.to_string role);
       Option.bind
         (CnfRole.resolve_role_intersection abstract_self role)
         (fun _ -> CnfRole.resolve_role_intersection self role)
@@ -1283,7 +1314,9 @@ and project_events ctxt (events : Choreo.event' list) : ProjectionContext.t =
              "\ntx_opt for role: %s"
              (CnfRole.to_string tx_ctxt.role);
         print_endline
-        @@ Printf.sprintf "rx_opt for : %s\n" (CnfRole.to_string rx_ctxt.role);
+        @@ Printf.sprintf
+             "rx_opt for role: %s\n"
+             (CnfRole.to_string rx_ctxt.role);
 
         let common_constraints =
           List.filter
@@ -1314,14 +1347,13 @@ and project_events ctxt (events : Choreo.event' list) : ProjectionContext.t =
         , Some (add_common_constraints rx_ctxt) )
       | _ as other -> other
     in
-    (* at this point, tx_opt and rx_opt (when Some) include the effective bindings
-      (the ones they share) in their encoding *)
+    (* reminder: at this point, the encodings for tx_opt and rx_opt (when Some) 
+       include the active bindings (the ones actually binding them together) *)
 
-    (* let ctxt_res = *)
     match (tx_opt, rx_opt) with
     | Some tx_ctxt, Some rx_ctxt ->
       (* debug *)
-      print_endline @@ Printf.sprintf "Role at both sides";
+      print_endline @@ Printf.sprintf "\nRole label present in both sides";
 
       (* partitioning of implicit constraints across tx and rx according
           to whether they appear: on both sides, on tx-only, on rx-only
@@ -1369,10 +1401,10 @@ and project_events ctxt (events : Choreo.event' list) : ProjectionContext.t =
       in
 
       (* debug *)
-      print_endline
+      (* print_endline
       @@ Printf.sprintf "\nrx is implicit user: %b" is_implicit_rx_user;
       print_endline
-      @@ Printf.sprintf "tx is implicit user: %b\n" is_implicit_tx_user;
+      @@ Printf.sprintf "tx is implicit user: %b\n" is_implicit_tx_user; *)
 
       (* remote user-sets as seen by @self, according to its role *)
       let init_set, rcv_set =
@@ -1384,6 +1416,7 @@ and project_events ctxt (events : Choreo.event' list) : ProjectionContext.t =
           in
           (mapper tx_ctxt.defines, mapper rx_ctxt.uses)
         in
+
         (* debug *)
         (* print_endline "\ntx_lead_local_bindings";
           List.iter
@@ -1396,8 +1429,9 @@ and project_events ctxt (events : Choreo.event' list) : ProjectionContext.t =
               print_endline (Frontend.Unparser.unparse_expr z))
             (StringMap.bindings rx_lead_local_bindings);
           print_newline (); *)
+
         (* rewrite remote user-set according to the bindings in scope *)
-        let derive_set local_bindings user_set_exprs =
+        let rewrite local_bindings user_set_exprs =
           List.map
             (rewrite_userset
                (StringMap.union
@@ -1407,38 +1441,55 @@ and project_events ctxt (events : Choreo.event' list) : ProjectionContext.t =
                |> StringMap.map (fun e -> snd e)))
             user_set_exprs
         in
-        ( derive_set rx_lead_local_bindings communication_ctxt.init_set
-        , derive_set tx_lead_local_bindings communication_ctxt.rcv_set )
+        ( rewrite rx_lead_local_bindings communication_ctxt.init_set
+        , rewrite tx_lead_local_bindings communication_ctxt.rcv_set )
       in
 
       (* *)
       let tx_only_res =
-        let project_tx_self (tx_only_role : CnfRole.t) =
-          Option.fold
-            (resolve_unify_self tx_only_role)
-            ~none:[]
-            ~some:(fun (self : CnfRole.t) ->
+        let try_tx_only_project (tx_only_role : CnfRole.t) =
+          begin
+            match resolve_unify_self tx_only_role with
+            | None -> []
+            | Some (self : CnfRole.t) ->
               let projection_type =
-                let rcvrs =
-                  if is_user tx_only_role then
-                    CnfUserset.exclude_role rcvrs self
-                  else rcvrs
-                in
                 TxO
                   ( tx_ctxt.implicit_constraints
-                  , exclude_abstract_self rcvrs
+                  , CnfUserset.exclude_role rcvrs abstract_self
                   , rcv_set )
               in
-              project ctxt event' ~self ~projection_type ~local_bindings)
+              project ctxt event' ~self ~projection_type ~local_bindings
+          end
         in
         Option.fold
-          (CnfRole.resolve_role_diff tx_ctxt.role rx_ctxt.role)
-          ~none:
-            (if is_user tx_ctxt.role then (
-               print_endline "TxO with user on tx-side\n";
-               project_tx_self tx_ctxt.role)
-             else [])
-          ~some:(fun diff_role -> project_tx_self diff_role)
+          (CnfRole.resolve_role_intersection tx_ctxt.role rx_ctxt.role)
+          ~none:(try_tx_only_project tx_ctxt.role)
+          ~some:(fun _ ->
+            let tx_role = filter_out_abstract_self_marker tx_ctxt.role
+            and rx_role = filter_out_abstract_self_marker rx_ctxt.role in
+            (* *)
+            if is_user tx_role then
+              if is_user rx_role then begin
+                (* two users and there is a potential intersection - the 
+            instantiation constraint should prevent full unification - msg from
+            @self to @self makes no sense - maybe this is something that Babel
+            should flag and prevent at @runtime? *)
+                match CnfRole.resolve_role_diff tx_role rx_role with
+                | None ->
+                  (* TODO ensure this is handled upstream (@ Projectability) *)
+                  assert false
+                | Some tx_only_role -> try_tx_only_project tx_only_role
+              end
+              else
+                (* user on lhs-only means the user is a member of the rhs-group *)
+                try_tx_only_project tx_role
+            else begin
+              match CnfRole.resolve_role_diff tx_role rx_role with
+              | None ->
+                (* tx-group contained in rx_role - will be caught by a dual instead *)
+                []
+              | Some tx_only_role -> try_tx_only_project tx_only_role
+            end)
       (* *)
       and rx_only_res =
         let project_rx_self rx_only_role =
@@ -1446,11 +1497,15 @@ and project_events ctxt (events : Choreo.event' list) : ProjectionContext.t =
             (resolve_unify_self rx_only_role)
             ~none:[]
             ~some:(fun (self : CnfRole.t) ->
-              let initrs =
-                if is_user rx_only_role then CnfUserset.exclude_role initrs self
-                else initrs
-              in
               let projection_type =
+                let initrs =
+                  if is_user rx_only_role then
+                    CnfUserset.exclude_role
+                      initrs
+                      (filter_out_abstract_self_marker self)
+                    (* CnfUserset.exclude_role initrs self *)
+                  else initrs
+                in
                 RxO
                   ( rx_ctxt.implicit_constraints
                   , exclude_abstract_self initrs

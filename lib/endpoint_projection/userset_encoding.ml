@@ -452,12 +452,16 @@ end = struct
 
   let exclude_role (t : t) (role : CnfRole.t) =
     let { label; _ } : CnfRole.t = role in
+    print_endline @@ Printf.sprintf "being excluded: %s" (CnfRole.to_string role);
     match StringMap.find_opt label t with
     | None -> t
     | Some prev -> begin
       match CnfRole.resolve_role_diff prev role with
       | None -> StringMap.remove label t
-      | Some role -> StringMap.add label role t
+      | Some role -> 
+        print_endline @@ Printf.sprintf "from: %s" (CnfRole.to_string prev);
+        print_endline @@ Printf.sprintf "result: %s" (CnfRole.to_string role);
+        StringMap.add label role t
     end
 
   let to_list (t : t) = StringMap.bindings t |> List.map snd
