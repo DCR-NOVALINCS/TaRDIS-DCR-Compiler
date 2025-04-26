@@ -143,6 +143,7 @@ module Projection = struct
     ; local_bindings : (string * expr') StringMap.t
     ; implicit_bindings : cnf_clause list
     ; instantiation_constraints : cnf_formula
+    ; instantiation_constraint_exprs : expr' list list
     ; communication : communication
     ; symbols : expr' StringMap.t
     }
@@ -209,9 +210,18 @@ module Projection = struct
             Printf.sprintf "%s:%s" sym (Frontend.Unparser.unparse_expr expr'))
           (StringMap.bindings e.symbols)
         |> String.concat ", " |> Printf.sprintf "(%s)"
+      and unparse_instantiation_exprs () =
+        let unparse_clause clause =
+          List.map (Frontend.Unparser.unparse_expr) clause
+          |> String.concat ", "
+          |> Printf.sprintf "[%s]"
+        in
+        List.map unparse_clause e.instantiation_constraint_exprs
+        |> String.concat ", "
+        |> Printf.sprintf "[%s]"
       in
       Printf.sprintf
-        "%s(uid:%s)  %s %s  %s\n%s@requires %s"
+        "%s(uid:%s)  %s %s  %s\n%s@requires %s\n%s%s%s"
         indent
         e.uid
         (unparse_info ())
@@ -219,6 +229,9 @@ module Projection = struct
         (unparse_communication e.communication)
         indent
         (unparse_cnf_formula e.instantiation_constraints)
+        indent
+        indent
+        (unparse_instantiation_exprs ())
     in
     List.map unparse_event events |> String.concat "\n\n"
 
@@ -348,6 +361,8 @@ module TriggerCtxt : sig
 
   val lookup_binding : identifier -> t -> (string * expr') option
 
+  val lookup_expr_by_sym : string -> t -> expr'
+
   val bindings : t -> (string * expr') StringMap.t
 
   val trigger_sym_of : expr' -> t -> t * string
@@ -384,11 +399,13 @@ end = struct
   and bootstrap_trigger_id = "_@trigger#_"
 
   let init ~(self : CnfRole.t) ~(role_decl' : Choreo.value_dep_role_decl') =
-    (* Reminder: we assume that the runtime value of role params can be
-    queried at runtime through ordinary computation expressions which are
-    expected to be follow the generic form _@self.params.<param_name> 
-    (e.g., cid -> _@self.params.cid); 
-    For each the [bindings] map is initialized with these expressions at top level *)
+    (* Reminder: we assume that the runtime value of a participants' params
+      can be queried at runtime through regular computation expressions 
+      following the generic form '_@self.params.<param_name>' 
+      (e.g., cid -> _@self.params.cid); *)
+
+    (* The [exprs_by_sym] env is initialized with the above-described 
+    expressions at top level, based on the role's declared parameters *)
     let exprs_by_sym =
       let encode_self_prop_deref_expr named_param' =
         let self_ref_expr = annotate (EventRef (annotate "_@self")) in
@@ -407,7 +424,6 @@ end = struct
         params
       |> fun bindings -> Env.empty |> Env.bind_list bindings
     in
-    print_endline @@ Env.to_string ~fmt:(Frontend.Unparser.unparse_expr) exprs_by_sym;
     [ ( bootstrap_event_id
       , { self
         ; trigger_id = bootstrap_trigger_id
@@ -423,9 +439,6 @@ end = struct
   let current_scope (t : t) = snd (peek t)
 
   let self (t : t) = (snd (peek t)).self
-
-  (* let lookup_expr_by_sym (sym:string) : (expr':Choreo.expr') =
-    if Symbols.encodes_param_name sym  *)
 
   let trigger_sym_of expr' (t : t) =
     (* stringify a @trigger.prop1.prop2... expression *)
@@ -470,6 +483,9 @@ end = struct
 
   let lookup_binding declared_sym t =
     StringMap.find_opt declared_sym (bindings t)
+
+  let lookup_expr_by_sym (sym : string) (t : t) =
+    Env.find_flat sym (current_scope t).exprs_by_sym
 
   let initiators_of (event_id : event_id) (t : t) =
     let scope = snd (peek t) in
@@ -1152,6 +1168,7 @@ and project_events ctxt (events : Choreo.event' list) : ProjectionContext.t =
       =
     let uid = Option.get !(event'.uid)
     and base_self = ProjectionContext.self ctxt in
+    let trigger_ctxt = ctxt.ProjectionContext.trigger_ctxt in
 
     (* reminder: the marking must eventually be adjusted according to direct
        dependencies - an Rx is usually not excluded or pending, unless
@@ -1211,38 +1228,62 @@ and project_events ctxt (events : Choreo.event' list) : ProjectionContext.t =
                   (CnfRole.to_string self)
                   (unparse_cnf_formula @@ instantiation_constraints);
 
-             (* TODO [revisit :: strategy and consts] currently duplicated *)
-             (* Encode '_@X0.value prop-deref expr *)
-             (* let encode_self_prop_deref_expr named_param' =
-               let self_ref_expr = annotate (EventRef (annotate "_@self")) in
-               let param_name', value' = named_param'.data in
-               let type_info = Option.get !(value'.ty) in
-               let val_deref_expr =
-                 annotate (PropDeref (self_ref_expr, annotate "params"))
-               in
-               annotate
-                 ~ty:(Some type_info)
-                 (PropDeref (val_deref_expr, param_name'))
-             in
-             (* let rewrite_constraints (cnf:cnf_formula) (trigger_ctxt:) *)
-             let instantiation_consts =
+             (* TODO [revisit :: move somewhere else] *)
+             let instantiation_constraint_exprs =
                let map_sym sym =
-                 match Symbols.try_decode_param_name sym with
-                 | Some param_name ->
-                   let a = self.param_types in
-                   assert false
-                 | None -> assert false
+                 TriggerCtxt.lookup_expr_by_sym sym trigger_ctxt
                in
-               let map_cnf_bool_constraint = function
-                 | CnfSymEq (sym1, sym2) -> assert false
-                 | CnfEq (sym, lit_val) -> assert false
+               let map_cnf_bool_constraint ~(eq : bool) = function
+                 | CnfSymEq (sym1, sym2) ->
+                   let expr1', expr2' = (map_sym sym1, map_sym sym2) in
+                   if eq then
+                     annotate
+                       ~ty:(Some { t_expr = Choreo.BoolTy; is_const = false })
+                       (Choreo.BinaryOp (expr1', expr2', Choreo.Eq))
+                   else
+                     annotate
+                       ~ty:(Some { t_expr = Choreo.BoolTy; is_const = false })
+                       (Choreo.BinaryOp (expr1', expr2', Choreo.NotEq))
+                 | CnfEq (sym, lit_val) ->
+                   let expr' = map_sym sym in
+                   let sym_expr' =
+                     match lit_val with
+                     | BoolLit bool_val ->
+                       if bool_val then
+                         annotate
+                           ~ty:
+                             (Some { t_expr = Choreo.BoolTy; is_const = true })
+                           Choreo.True
+                       else
+                         annotate
+                           ~ty:
+                             (Some { t_expr = Choreo.BoolTy; is_const = true })
+                           Choreo.False
+                     | IntLit int_val ->
+                       annotate
+                         ~ty:(Some { t_expr = Choreo.IntTy; is_const = true })
+                         (Choreo.IntLit int_val)
+                     | StringLit str_val ->
+                       annotate
+                         ~ty:
+                           (Some { t_expr = Choreo.StringTy; is_const = true })
+                         (Choreo.StringLit str_val)
+                   in
+                   if eq then
+                     annotate
+                       ~ty:(Some { t_expr = Choreo.BoolTy; is_const = false })
+                       (Choreo.BinaryOp (expr', sym_expr', Choreo.Eq))
+                   else
+                     annotate
+                       ~ty:(Some { t_expr = Choreo.BoolTy; is_const = false })
+                       (Choreo.BinaryOp (expr', sym_expr', Choreo.NotEq))
                in
-               let map_lit = function
-                 | Positive x -> Positive (map_cnf_bool_constraint x)
-                 | Negative x -> Negative (map_cnf_bool_constraint x)
-               in
-               assert false
-             in *)
+               List.map
+                 (List.map (function
+                   | Positive x -> map_cnf_bool_constraint ~eq:true x
+                   | Negative x -> map_cnf_bool_constraint ~eq:false x))
+                 instantiation_constraints
+             in
              (* TODO rewrite instantiation constraints converting @trigger and 
             bindings symbols alike back to computation expressions *)
 
@@ -1263,6 +1304,7 @@ and project_events ctxt (events : Choreo.event' list) : ProjectionContext.t =
              ; symbols
              ; implicit_bindings
              ; instantiation_constraints
+             ; instantiation_constraint_exprs
              ; local_bindings
              })
     in
