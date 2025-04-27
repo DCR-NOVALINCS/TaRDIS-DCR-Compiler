@@ -44,7 +44,7 @@ let encode_events (events : event list) : Basic.t =
     events
   |> fun lst -> `Assoc [ ("events", `List lst) ]
 
-let encode_endpoint_process (endpoint_process : process) =
+let encode_endpoint_process (endpoint_process : endpoint) =
   let { events; relations } = endpoint_process in
   print_endline @@ Yojson.Basic.pretty_to_string @@ encode_events events
 (* let json_events =  *)

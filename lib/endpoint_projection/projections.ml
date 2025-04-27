@@ -119,23 +119,40 @@ module Projection = struct
     { events : event_t list
     ; relations : relation list
     }
-  (* [example] local_binding : 'X' -> ('_@X0', _@trigger.initiator.cid) *)
+  (* TODO revise whether implicit_bindings hasn't become irrelevant after parameterised triggers *)
 
-  (** A placeholder for information required both during the projection process
-      and for deriving the resulting endpoint event.
+  (* [] maintains a mapping of the bindings accumulated across
+  scopes wich are visible to this event, and likewise, propagated to
+  subsequent nested scopes (e.g., 'X' -> ('_@X0', _@trigger.initiator.cid)) *)
 
-      [event'] choreography event linked to this endpoint-event
+  (** An intermediate placeholder for event-related information required both
+      during the projection process (most often, cnf-based) and for the
+      generation of the projected endpoint event (most often, expr-based).
+
+      [event'] choreography event associated with this endpoint-event.
 
       [uid] the uid of the choreography [event'] (redundant, kept for
-      convenience)
+      convenience)-
 
-      [self] knowledge about the user observing this event's execution - as a
-      role succesively unifies with events, either as an initator or a receiver,
-      [self] accumulates implicit knowledge about the role which is subsequently
-      propagated to potential nested scopes (monotonically narrows the role
-      towards a user)
+      [self] knowledge about the user with visibility to this event - as a role
+      succesively unifies with events, either as an initiator and/or a receiver,
+      the field accumulates implicit knowledge about the role which is
+      subsequently propagated to potentially nested scopes (and monotonically
+      narrowing the role towards a user in the process).
 
-      [local_bindings] strictly expanding *)
+      [local_bindings] maintains a mapping for the bindings introduced by this
+      event (e.g., 'X' -> ('_@X0', _@trigger.initiator.cid)); as the value of a
+      binding is only known at runtime, the computation expression indicates how
+      a reference to X should be evaluated in a nested scope derived from this
+      event, based on how the _@trigger-event is expected to store this
+      information (supports rewritting of binding symbols in the projected
+      participant expressions).
+
+      [implicit_bindings] the cnf-based encoding of the local_bindings
+      introduced by this event; any spawn based on this event must implicitly propagate
+      these bindings to the context of the nested scope.
+
+      [instantiation_constraints] *)
   and event_t =
     { event' : Choreo.event'
     ; uid : identifier
@@ -212,13 +229,11 @@ module Projection = struct
         |> String.concat ", " |> Printf.sprintf "(%s)"
       and unparse_instantiation_exprs () =
         let unparse_clause clause =
-          List.map (Frontend.Unparser.unparse_expr) clause
-          |> String.concat ", "
-          |> Printf.sprintf "[%s]"
+          List.map Frontend.Unparser.unparse_expr clause
+          |> String.concat ", " |> Printf.sprintf "[%s]"
         in
         List.map unparse_clause e.instantiation_constraint_exprs
-        |> String.concat ", "
-        |> Printf.sprintf "[%s]"
+        |> String.concat ", " |> Printf.sprintf "[%s]"
       in
       Printf.sprintf
         "%s(uid:%s)  %s %s  %s\n%s@requires %s\n%s%s%s"
@@ -542,19 +557,33 @@ end = struct
   let end_scope (t : t) : t = snd @@ pop t
 end
 
-(**  *)
 module CommunicationCtxt : sig
-  (** [local_bindings] maps each locally-introduced bindings to its
-      corresponding renaming and computation expression to eval on spawn, e.g.,
-      for some binding #cid as X, {X -> (_@X0, _@trigger.initiator.cid)}) *)
+  (** An ancillary placeholder for the information derived from processing a
+      choreography event.
+
+      [init_ctxt] cnf-derived information about the initiators
+
+      [initiators] the initiator expression as declared in the choreography
+      event
+
+      [rcv_ctxt] cnf-derived information about the initiators
+
+      [receivers] the receiver expression as declared in the choreography event
+
+      [local_bindings] maps each locally-introduced binding to its corresponding
+      renaming and spawn-generated computation expression (e.g., a declared
+      param '#cid as X', could add an entry X -> (@X0, _@trigger.initiator.cid))
+  *)
   type t =
     { init_ctxt : RoleCtxt.t StringMap.t
-    ; init_set : user_set_expr' list
+    ; initiators : user_set_expr' list
     ; rcv_ctxt : RoleCtxt.t StringMap.t
-    ; rcv_set : user_set_expr' list
+    ; receivers : user_set_expr' list
     ; local_bindings : (string * expr') StringMap.t
     }
 
+  (** Generate the communication ctxt associated to the [participants] declared
+      in the choreography event *)
   val of_communication_expr :
     event_id -> participants -> TriggerCtxt.t -> TriggerCtxt.t * t
 
@@ -564,9 +593,9 @@ end = struct
 
   type t =
     { init_ctxt : RoleCtxt.t StringMap.t
-    ; init_set : user_set_expr' list
+    ; initiators : user_set_expr' list
     ; rcv_ctxt : RoleCtxt.t StringMap.t
-    ; rcv_set : user_set_expr' list
+    ; receivers : user_set_expr' list
     ; local_bindings : (string * expr') StringMap.t
     }
 
@@ -803,15 +832,15 @@ end = struct
         role_expr'
       |> fun (a, b, c) -> (a, b, [ c ])
     | Initiator event_id' ->
-      let init_set =
+      let init_ctxt =
         TriggerCtxt.initiators_of event_id'.data trigger_ctxt |> to_role_ctxts
       in
-      (trigger_ctxt, local_bindings, init_set)
+      (trigger_ctxt, local_bindings, init_ctxt)
     | Receiver event_id' ->
-      let rcv_set =
+      let rcv_ctxt =
         TriggerCtxt.receivers_of event_id'.data trigger_ctxt |> to_role_ctxts
       in
-      (trigger_ctxt, local_bindings, rcv_set)
+      (trigger_ctxt, local_bindings, rcv_ctxt)
 
   let encode_user_set_exprs event_id (trigger_ctxt, local_bindings)
       user_set_exprs =
@@ -835,7 +864,8 @@ end = struct
 
   let of_communication_expr event_id (participants : Choreo.participants)
       (trigger_ctxt : TriggerCtxt.t) : TriggerCtxt.t * t =
-    let trigger_ctxt, local_bindings, init_ctxt, rcv_ctxt, init_set, rcv_set =
+    let trigger_ctxt, local_bindings, init_ctxt, rcv_ctxt, initiators, receivers
+        =
       ( participants |> function
         | Choreo.Local init' -> (init', [])
         | Choreo.Interaction (init', recvrs) -> (init', recvrs) )
@@ -851,7 +881,8 @@ end = struct
       in
       (trigger_ctxt, local_bindings, initiators, receivers, [ initrs ], rcvrs)
     in
-    (trigger_ctxt, { local_bindings; init_ctxt; rcv_ctxt; init_set; rcv_set })
+    ( trigger_ctxt
+    , { local_bindings; init_ctxt; rcv_ctxt; initiators; receivers } )
 end
 
 (** [list_combine f [a1; ...; an] [b1; ...; bm]] returns the list
@@ -1207,8 +1238,8 @@ and project_events ctxt (events : Choreo.event' list) : ProjectionContext.t =
       end
       |> List.map
            (fun (uid, implicit_bindings, communication) : Projection.event_t ->
-             (* reduce instantiation constraints to new knowledge, i.e., 
-                to whatever was not already entailed by the @self *)
+             (* keep instantiation constraints down to new-knowledge only (i.e., 
+                to whatever was not already entailed by @self) *)
              let instantiation_constraints =
                extract_min_diff_constraint_set base_self.encoding self.encoding
                |> List.filter (fun c1 ->
@@ -1542,8 +1573,8 @@ and project_events ctxt (events : Choreo.event' list) : ProjectionContext.t =
                |> StringMap.map (fun e -> snd e)))
             user_set_exprs
         in
-        ( rewrite rx_lead_local_bindings communication_ctxt.init_set
-        , rewrite tx_lead_local_bindings communication_ctxt.rcv_set )
+        ( rewrite rx_lead_local_bindings communication_ctxt.initiators
+        , rewrite tx_lead_local_bindings communication_ctxt.receivers )
       in
 
       let tx_only_res, rx_only_res =
@@ -1884,7 +1915,7 @@ and project_events ctxt (events : Choreo.event' list) : ProjectionContext.t =
           (rewrite_userset
              (TriggerCtxt.bindings trigger_ctxt
              |> StringMap.map (fun e -> snd e)))
-          communication_ctxt.rcv_set
+          communication_ctxt.receivers
       in
       let self =
         { self with
@@ -1907,7 +1938,7 @@ and project_events ctxt (events : Choreo.event' list) : ProjectionContext.t =
           (rewrite_userset
              (TriggerCtxt.bindings trigger_ctxt
              |> StringMap.map (fun e -> snd e)))
-          communication_ctxt.init_set
+          communication_ctxt.initiators
       in
       let self =
         { self with

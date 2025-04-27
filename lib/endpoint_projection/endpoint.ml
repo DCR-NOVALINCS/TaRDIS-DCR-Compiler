@@ -1,11 +1,14 @@
 module Choreo = Frontend.Syntax  
 open Userset_encoding
  
-type process  = {
+type endpoint  = {
   events: event list
   ; relations : relation list
 }
 
+(**
+[uid] unique id assigned to every event
+*)
 and event =
   { uid : Choreo.identifier
   ; id : Choreo.event_id
@@ -24,7 +27,7 @@ and event =
         * (Choreo.element_uid * Choreo.event_id)
         * Choreo.relation_type
         * CnfRole.t
-    | SpawnRelation of Choreo.element_uid * (Choreo.element_uid * Choreo.event_id) * process
+    | SpawnRelation of Choreo.element_uid * (Choreo.element_uid * Choreo.event_id) * endpoint
 
   and communication =
     | Local
@@ -112,7 +115,7 @@ and event =
       List.map (unparse_relation ~indent) relations |> String.concat "\n"
     (* |> String.cat (indent ^ "\n;\n") *)
   
-    and unparse_projection ?(indent = "") ({ events; relations } : process) =
+    and unparse_projection ?(indent = "") ({ events; relations } : endpoint) =
       let unparsed_events = unparse_events ~indent events
       and unparsed_relations = unparse_relations ~indent relations in
       if unparsed_relations = "" then unparsed_events
