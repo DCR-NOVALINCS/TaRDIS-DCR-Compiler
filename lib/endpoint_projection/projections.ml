@@ -149,8 +149,8 @@ module Projection = struct
       participant expressions).
 
       [implicit_bindings] the cnf-based encoding of the local_bindings
-      introduced by this event; any spawn based on this event must implicitly propagate
-      these bindings to the context of the nested scope.
+      introduced by this event; any spawn based on this event must implicitly
+      propagate these bindings to the context of the nested scope.
 
       [instantiation_constraints] *)
   and event_t =
