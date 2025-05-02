@@ -275,7 +275,7 @@
   and event_marking =
     { is_pending' : bool annotated
     ; is_included' : bool annotated
-    ; default_val : value' option
+    ; default_val_opt : value' option
     }
 
   (*

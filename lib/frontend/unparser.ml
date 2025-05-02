@@ -221,9 +221,9 @@ and unparse_event_participants participants' =
     |> String.concat ", "
     |> Printf.sprintf "%s -> %s" (unparse_user_set_expr initiator'.data)
 
-and unparse_event_marking_extended { is_pending'; is_included'; default_val } =
+and unparse_event_marking_extended { is_pending'; is_included'; default_val_opt } =
   let default_val =
-    Option.fold default_val ~none:String.empty ~some:(fun value' ->
+    Option.fold default_val_opt ~none:String.empty ~some:(fun value' ->
         unparse_value' value')
   in
   let short_string_of_bool bool_val = if bool_val then "T" else "F" in

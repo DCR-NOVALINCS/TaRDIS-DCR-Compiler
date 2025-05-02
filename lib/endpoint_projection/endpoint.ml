@@ -34,6 +34,8 @@ and event =
   
   and value' = Choreo.value'
 
+  and value = Choreo.value
+
   and relation =
     | ControlFlowRelation of
         Choreo.element_uid

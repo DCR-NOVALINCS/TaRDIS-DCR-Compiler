@@ -83,25 +83,25 @@ let default_marking : event_marking' =
   annotate
     { is_pending' = annotate false
     ; is_included' = annotate true
-    ; default_val = Option.none
+    ; default_val_opt = Option.none
     }
 
 let default_marking_pend =
   { is_pending' = annotate true
   ; is_included' = annotate true
-  ; default_val = Option.none
+  ; default_val_opt = Option.none
   }
 
 let default_marking_excl =
   { is_pending' = annotate false
   ; is_included' = annotate false
-  ; default_val = Option.none
+  ; default_val_opt = Option.none
   }
 
 let default_marking_pend_excl =
   { is_pending' = annotate true
   ; is_included' = annotate false
-  ; default_val = Option.none
+  ; default_val_opt = Option.none
   }
 
 (*  TODO cleanup required here *)
@@ -449,7 +449,7 @@ plain_user_set_role_expr_param_val_fact:
 // TODO revisit to include value
 node_marking: mark_loc_ty(plain_node_marking) {$1}
 plain_node_marking:
-  | pend = bool; COMMA; inc = bool    { {is_pending' = pend; is_included' = inc; default_val = Option.none} }
+  | pend = bool; COMMA; inc = bool    { {is_pending' = pend; is_included' = inc; default_val_opt = Option.none} }
 ;
 
 type_expr: mark_loc_ty_ty(plain_type_expr) {$1}
