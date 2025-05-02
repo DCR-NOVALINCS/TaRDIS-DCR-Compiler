@@ -37,7 +37,7 @@
   and value' = value annotated
 
   and value =
-    | BooleanVal of bool
+    | BoolVal of bool
     | IntVal of int
     | StringVal of string
     | RecordVal of record_field_val' list

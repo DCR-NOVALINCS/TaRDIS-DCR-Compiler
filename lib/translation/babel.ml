@@ -47,11 +47,49 @@ let encode_events (events : event list) : Basic.t =
 let encode_endpoint_process (endpoint_process : endpoint) =
   let { events; relations } = endpoint_process in
   print_endline @@ Yojson.Basic.pretty_to_string @@ encode_events events
-(* let json_events =  *)
 
-let test () =
-  print_endline @@ Yojson.Basic.pretty_to_string
-  @@ encode_event ~uid:"2" ~id:"3"
+let rec encode_value (value' : value') =
+  match value'.data with
+  | BoolVal bool_val ->
+    `Assoc [ ("value", `Bool bool_val) ] |> fun value ->
+    `Assoc [ ("boolLit", value) ]
+  | IntVal int_val ->
+    `Assoc [ ("value", `Int int_val) ] |> fun value ->
+    `Assoc [ ("intLit", value) ]
+  | StringVal string_val ->
+    `Assoc [ ("value", `String string_val) ] |> fun value ->
+    `Assoc [ ("stringLit", value) ]
+  | RecordVal fields ->
+    List.fold_left
+      (fun (acc : Basic.t list) (field' : record_field_val') ->
+        let name', value' = field'.data in
+        let field_name = ("name", `String name'.data)
+        and field_value = ("value", encode_value value') in
+        `Assoc [ field_name; field_value ] :: acc)
+      []
+      fields
+    |> fun lst ->
+    `Assoc [ ("fields", `List (List.rev lst)) ] |> fun rec_val ->
+    `Assoc [ ("recordVal", rec_val) ]
+
+(* let encode_marking (marking : marking) =
+  let value = *)
+
+(* {"p3": "a_string"; "p4": {"p5": {"p1": true; "p2": 3}} } *)
+let test_record_val () =
+  let open Choreo in
+  let field1 = annotate (annotate "p1", annotate (BoolVal true)) in
+  let field2 = annotate (annotate "p2", annotate (IntVal 3))
+  and field3 = annotate (annotate "p3", annotate (StringVal "a_string")) in
+  let record_val = RecordVal [ field1; field2 ] in
+  let field4 =
+    annotate
+      ( annotate "p4"
+      , annotate (RecordVal [ annotate (annotate "p5", annotate record_val) ])
+      )
+  in
+  let record_val = annotate (RecordVal [ field3; field4 ]) in
+  print_endline @@ Yojson.Basic.pretty_to_string @@ encode_value record_val
 
 (* 
   

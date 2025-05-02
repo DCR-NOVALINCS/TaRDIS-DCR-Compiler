@@ -22,6 +22,18 @@ and event =
 
   and marking = Choreo.event_marking
 
+
+
+(*
+    =============================================================================
+    Values, Computation Expressions and Type Epxressions
+    =============================================================================
+  *)
+
+  and record_field_val' = Choreo.value' Choreo.named_param'
+  
+  and value' = Choreo.value'
+
   and relation =
     | ControlFlowRelation of
         Choreo.element_uid

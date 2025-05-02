@@ -57,7 +57,7 @@ and unparse_lattice_flow_decls flow_decls =
 and unparse_value' value' = unparse_value value'.data
 
 and unparse_value = function
-  | BooleanVal bool_val -> Bool.to_string bool_val
+  | BoolVal bool_val -> Bool.to_string bool_val
   | IntVal int_val -> Int.to_string int_val
   | StringVal string_val -> string_val
   | RecordVal record_fields ->
