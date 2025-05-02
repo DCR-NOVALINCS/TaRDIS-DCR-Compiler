@@ -2,8 +2,6 @@ module Choreo = Frontend.Syntax
 open Choreo
 open Sat
 open Utils
-
-(* open Utils.Env *)
 open Utils.Results
 open Utils.Logs
 open Frontend.Unparser
@@ -27,6 +25,12 @@ type node =
 
 (* =========================================================================
    ==================== DEBUG section (temporary: to remove) =============== *)
+let debug_map_list (l : (cnf_formula, (loc * element_uid) list) leakError) =
+  let open Printf in
+  match l with
+  | UNSAT _ -> print_endline "UNSAT"
+  | SAT -> print_endline "SAT "
+  | Unknown s -> unparse_cnf_formula s |> print_endline
 
 let debug_SCs id list =
   print_endline "====== [DEBUG start] SCs ===";
@@ -77,7 +81,7 @@ let global_label_SC : security_level TreeMap.t ref = ref TreeMap.empty
 
 module CnfExprCtxt : sig
   type t =
-    { symbolic : expr' Env.t
+    { symbolic_env : expr' Env.t
     ; contraints : cnf_formula TreeMap.t
     }
 
@@ -98,11 +102,28 @@ module CnfExprCtxt : sig
   val return_constainsts : t -> cnf_formula TreeMap.t
 
   val update_cnf_formula : string -> cnf_formula -> t -> t
+
+  val cnf_expr : cnf_formula -> t -> expr list list
+
+  val update_expr'_env : string -> expr' -> t -> t
+
+  val debug_contraints : t -> unit
 end = struct
   type t =
-    { symbolic : expr' Env.t (* string -> Expr ( stringfy da expr -> expr')*)
+    { symbolic_env :
+        expr' Env.t (* string -> Expr ( stringfy da expr -> expr')*)
     ; contraints : cnf_formula TreeMap.t (* string -> cnf ( uuid event -> cnf)*)
     }
+
+  let debug_contraints ctxt =
+    print_endline " ====== [DEBUG start] Constraints ===";
+    print_endline @@ "Number of constraints: "
+    ^ string_of_int (TreeMap.cardinal ctxt.contraints);
+    TreeMap.iter
+      (fun key value ->
+        print_endline @@ key ^ " : " ^ unparse_cnf_formula value)
+      ctxt.contraints;
+    print_endline " ====== [DEBUG end] Constraints ==="
 
   let and_list (lst : (cnf_formula, (loc * element_uid) list) leakError list) :
       (cnf_formula, (loc * element_uid) list) leakError =
@@ -131,28 +152,32 @@ end = struct
         match x with
         | UNSAT s -> (
           match acc with
-          | UNSAT s' ->
-            aux xs (UNSAT (s @ s'))
+          | UNSAT s' -> aux xs (UNSAT (s @ s'))
           | _ -> aux xs acc)
         | Unknown s -> (
           match acc with
           | Unknown s' ->
             let p : cnf_formula = cnf_or s s' in
             aux xs (Unknown p)
-          | UNSAT _ ->
-            Unknown s
+          | UNSAT _ -> Unknown s
           | SAT -> aux xs acc)
         | SAT -> SAT)
     in
-    aux lst (UNSAT [ (Nowhere, "Error in or_list") ])
+    aux
+      lst
+      (UNSAT [ (Nowhere, "Error while aggregating CNF formulas with OR") ])
 
-  let empty : t = { symbolic = Env.empty; contraints = TreeMap.empty }
+  let empty : t = { symbolic_env = Env.empty; contraints = TreeMap.empty }
 
   let begin_scope ctxt =
-    { symbolic = Env.begin_scope ctxt.symbolic; contraints = ctxt.contraints }
+    { symbolic_env = Env.begin_scope ctxt.symbolic_env
+    ; contraints = ctxt.contraints
+    }
 
   let end_scope ctxt =
-    { symbolic = Env.end_scope ctxt.symbolic; contraints = ctxt.contraints }
+    { symbolic_env = Env.end_scope ctxt.symbolic_env
+    ; contraints = ctxt.contraints
+    }
 
   let update_cnf_formula (uuid : string) (cnf : cnf_formula) ctxt =
     let new_cnf =
@@ -163,20 +188,56 @@ end = struct
     match cnf_sat_solve new_cnf with
     | None -> ctxt
     | Some solver_cnf ->
-      { symbolic = ctxt.symbolic
-      ; contraints = TreeMap.add uuid solver_cnf ctxt.contraints
-      }
-  (* let cnf_expr ctxt =
-     let rec aux (env : node Env.t) =
-       match env with
-       | [] -> TreeMap.empty
-       | (s, node) :: xs ->
-         let new_map = aux xs in
-         TreeMap.add s (node.io, node.security_list) new_map
-     in
-     aux ctxt.symbolic *)
+      let aux =
+        { symbolic_env = ctxt.symbolic_env
+        ; contraints = TreeMap.add uuid solver_cnf ctxt.contraints
+        }
+      in
+      aux
+
+  let cnf_expr (cnf : cnf_formula) ctxt : expr list list =
+    let const_to_expr c env =
+      begin
+        match c with
+        | CnfSymEq (id1, id2) -> begin
+          match (Env.find_flat_opt id1 env, Env.find_flat_opt id2 env) with
+          | Some expr1, Some expr2 -> BinaryOp (expr1, expr2, Eq)
+          | _, _ -> assert false
+        end
+        | CnfEq (id, value) -> begin
+          match Env.find_flat_opt id env with
+          | Some expr -> begin
+            match value with
+            | BoolLit b ->
+              if b then BinaryOp (expr, annotate True, Eq)
+              else BinaryOp (expr, annotate False, Eq)
+            | IntLit i -> BinaryOp (expr, annotate (Choreo.IntLit i), Eq)
+            | StringLit s -> BinaryOp (expr, annotate (Choreo.StringLit s), Eq)
+          end
+          | None -> assert false
+        end
+      end
+    in
+    List.map
+      (fun clause ->
+        List.map
+          (fun literal ->
+            begin
+              match literal with
+              | Positive const -> const_to_expr const ctxt.symbolic_env
+              | Negative const ->
+                UnaryOp
+                  (annotate (const_to_expr const ctxt.symbolic_env), Negation)
+            end)
+          clause)
+      cnf
 
   let return_constainsts ctxt = ctxt.contraints
+
+  let update_expr'_env (uuid : string) (expr : expr') ctxt =
+    match Env.find_flat_opt uuid ctxt.symbolic_env with
+    | Some _ -> ctxt
+    | None -> { ctxt with symbolic_env = Env.bind uuid expr ctxt.symbolic_env }
 end
 
 module Ctxt : sig
@@ -228,6 +289,7 @@ end = struct
 
   let reset_references ctxt =
     global_label_SC := TreeMap.empty;
+    CnfExprCtxt.debug_contraints ctxt.symbolic;
     Ok ctxt.symbolic.contraints
 
   let begin_scope trigger ctxt =
@@ -275,7 +337,12 @@ end = struct
   let find_env (depth : int) (ctxt : t) =
     let rec aux (env : node Env.t) (depth : int) =
       if depth = 0 then Ok env
-      else if List.length env = 0 then Error [ (Nowhere, "Error in find_env") ]
+      else if List.length env = 0 then
+        Error
+          [ ( Nowhere
+            , "Error while trying to find an environment with depth "
+              ^ string_of_int depth )
+          ]
       else aux (Env.end_scope env) (depth - 1)
     in
     match aux ctxt.env depth with
@@ -329,25 +396,25 @@ end = struct
       | LessThan, Int n1, Int n2 -> Bool (n1 < n2)
       | And, Bool b1, Bool b2 -> Bool (b1 && b2)
       | Or, Bool b1, Bool b2 -> Bool (b1 || b2)
-      | _ -> failwith "Invalid binary operation")
+      | _ -> failwith ("    Invalid binary operation: " ^ unparse_expr expr))
     | UnaryOp (exp, op) -> (
       match (op, evalExpr exp env) with
       | Minus, Int n -> Int (-n)
       | Negation, Bool b -> Bool (not b)
-      | _ -> failwith "Invalid unary operation")
+      | _ -> failwith ("    Invalid unary operation" ^ unparse_expr expr))
     | PropDeref (e, prop) -> (
       let rec evalProp e prop env : ('a, 'b) resultExpr =
         match e.data with
         | Trigger t -> (
           match Env.find_flat_opt t env with
-          | None -> Error (e.loc, "Trigger Event does not exist")
+          | None -> Error (e.loc, "   Trigger event does not exist")
           | Some node -> (
             match node.io with
             | Input _ -> Unknown
             | Computation expr -> Ok (expr, node.env)))
         | EventRef e -> (
           match Env.find_flat_opt e.data env with
-          | None -> Error (e.loc, "Event does not exist")
+          | None -> Error (e.loc, "   Event does not exist")
           | Some node -> (
             match node.io with
             | Input _ -> assert false
@@ -365,21 +432,28 @@ end = struct
                     p)
                   rs
               with
-              | None -> Error (e.loc, "Error in propDeref not found record")
+              | None ->
+                Error
+                  ( e.loc
+                  , "Error in propDeref: Record entry not found: " ^ prop.data
+                  )
               | Some s ->
-                let r, expr = s.data in
+                let _, expr = s.data in
                 Ok (expr, env2))
             | _ -> Ok (expr, env2))
           | Unknown -> Unknown
-          | Error err -> Error (fst err, "Error in propDeref " ^ "\n" ^ snd err)
-          )
-        | _ -> Error (e.loc, "Invalid property dereference")
+          | Error err ->
+            Error
+              ( fst err
+              , "   Error in evaluating dereference value: " ^ prop2.data ^ "\n"
+                ^ snd err ))
+        | _ -> Error (e.loc, "    Invalid property dereference")
       in
       match evalProp e prop env with
       | Ok (expr, env2) -> evalExpr expr env2
       | Unknown -> Unknown
       | Error s -> Error s)
-    | _ -> failwith "Unhandled expression case: "
+    | _ -> failwith "   Unhandled expression case "
 end
 
 let rec check_static_information_security program =
@@ -400,12 +474,11 @@ let rec check_static_information_security program =
   check_security_graph
     ctxt
     (program.spawn_program.events, program.spawn_program.relations)
-  >>= fun _ -> Ctxt.reset_references ctxt
+  >>= fun final_ctxt -> Ctxt.reset_references final_ctxt
 
 and build_lattice (roles : value_dep_role_decl' list)
     (flw : flow_relation' list) (ctxt : Ctxt.t) =
   let build_lattice_level (ctxt : Ctxt.t) (flw : flow_relation') =
-    (* (lattice : string list TreeMap.t ref) = *)
     let left, right = flw.data in
     match TreeMap.find_opt left.data !(ctxt.lattice) with
     | Some l ->
@@ -413,7 +486,9 @@ and build_lattice (roles : value_dep_role_decl' list)
       Ok ctxt
     | None ->
       Error
-        [ (left.loc, "Error in lattice flow " ^ left.data ^ " -> " ^ right.data)
+        [ ( left.loc
+          , "Error building the lattice in edge: " ^ left.data ^ " -> "
+            ^ right.data )
         ]
   in
 
@@ -461,7 +536,7 @@ and retrive_security_of_events (ctxt : Ctxt.t) (events, crs) =
       let security_level = event_data.security_level.data in
       List.for_all
         (fun sec_label ->
-          let id, param = sec_label.data in
+          let _, param = sec_label.data in
           match param with
           | [] -> true
           | xs ->
@@ -483,8 +558,8 @@ and retrive_security_of_events (ctxt : Ctxt.t) (events, crs) =
     else
       Error
         [ ( event.loc
-          , "Error in typechecking security level of event " ^ id.data ^ ":"
-            ^ label.data )
+          , "   Error checking if all security parameters are constants in: "
+            ^ id.data ^ ":" ^ label.data )
         ]
   in
   let process_spawn_relation (ctxt : Ctxt.t) cr =
@@ -508,20 +583,28 @@ and get_security_of_expr (ctxt : Ctxt.t) expr =
   | Parenthesized expr -> get_security_of_expr ctxt expr
   | BinaryOp (e1, e2, _) -> (
     match get_security_of_expr ctxt e1 with
-    | Error e -> Error ((e1.loc, "Error in exp node" ^ unparse_expr e1) :: e)
+    | Error e ->
+      Error
+        ((e1.loc, "Error getting security level of expr: " ^ unparse_expr e1)
+        :: e)
     | Ok pc1 -> (
       match get_security_of_expr ctxt e2 with
-      | Error e -> Error ((e2.loc, "Error in exp node" ^ unparse_expr e2) :: e)
+      | Error e ->
+        Error
+          ((e2.loc, "Error getting security level of expr: " ^ unparse_expr e2)
+          :: e)
       | Ok pc2 -> Ok (get_levels_from_SC_List filter_higher_levels pc1 pc2 ctxt)
       ))
   | UnaryOp (e, _) -> get_security_of_expr ctxt e
   | EventRef id -> (
     match Env.find_flat_opt id.data ctxt.env with
-    | None -> Error [ (id.loc, "Error in static check expr " ^ id.data) ]
+    | None ->
+      Error [ (id.loc, "Error getting security level of event: " ^ id.data) ]
     | Some node -> Ok node.security_list)
   | Trigger t -> (
     match Env.find_flat_opt t ctxt.env with
-    | None -> Error [ (expr.loc, "Error in static check trigger " ^ t) ]
+    | None ->
+      Error [ (expr.loc, "Error getting security level of trigger: " ^ t) ]
     | Some sec_node -> Ok sec_node.security_list)
   | PropDeref (expr, _) -> get_security_of_expr ctxt expr
   | List list ->
@@ -538,15 +621,15 @@ and check_security_graph (ctxt : Ctxt.t) (events, crs) =
   fold_left_error check_security_event ctxt events >>= fun ctxt1 ->
   fold_left_error check_security_relation ctxt1 crs >>= fun ctxt2 -> Ok ctxt2
 
-and check_security_relation (ctxt : Ctxt.t)
-    cr (*(env, lattice, sec_params, simbolic_env)*) =
+and check_security_relation (ctxt : Ctxt.t) cr =
   match cr.data with
   | ControlRelation (e1, exp, e2, _) -> (
     match get_security_of_expr ctxt exp with
     | Error e ->
       Error
         (( cr.loc
-         , "Error in control relation checking event expression" ^ e1.data )
+         , "  Error in control relation checking guard expression: "
+           ^ unparse_expr exp )
         :: e)
     | Ok security_level -> (
       match
@@ -555,17 +638,18 @@ and check_security_relation (ctxt : Ctxt.t)
       | None, _ ->
         Error
           [ ( cr.loc
-            , "Error in control relation finding event1 in " ^ e1.data ^ "flows"
-              ^ e2.data )
+            , " Error in control relation finding first event in " ^ e1.data
+              ^ "flows" ^ e2.data )
           ]
       | _, None ->
         Error
           [ ( cr.loc
-            , "Error in control relation finding event2 in " ^ e1.data ^ "flows"
-              ^ e2.data )
+            , " Error in control relation finding second event in " ^ e1.data
+              ^ "flows" ^ e2.data )
           ]
       | Some node1, Some node2 -> (
-        let verify_relations_events (cond : cnf_formula) =
+        let verify_relations_events (cond : cnf_formula) symbolic =
+          let ctxt = { ctxt with symbolic } in
           match
             check_less_or_equal_security_level
               node1.security_list
@@ -574,31 +658,37 @@ and check_security_relation (ctxt : Ctxt.t)
               node2.env
               ctxt.sec_params
               ctxt.lattice
+              ctxt.symbolic
               true
           with
-          | UNSAT e ->
+          | _, UNSAT e ->
             Error
               (( cr.loc
-               , "Does not flow in control relation " ^ e1.data ^ "("
+               , "  Error information leak: In control relation " ^ e1.data
+                 ^ "("
                  ^ unparse_security_level' node1.security_list
                  ^ ") -> " ^ e2.data ^ " ("
                  ^ unparse_security_level' node2.security_list
                  ^ ")" )
               :: e)
-          | Unknown e ->
+          | symbolic, Unknown e ->
+            print_endline @@ "Constraint: " ^ unparse_cnf_formula e;
+            let ctxt = { ctxt with symbolic } in
             Ctxt.add_symbol
               cr
               (cnf_and cond e)
-              "Error in control relation: Invalid relation uuid in unknown"
+              " Error in control relation: Invalid relation uuid while adding \
+               dynamic flag in Unknown"
               ctxt
-          | SAT ->
+          | symbolic, SAT ->
+            let ctxt = { ctxt with symbolic } in
             Ctxt.add_symbol
               cr
               cond
-              "Error in control relation: Invalid relation uuid in SAT"
+              " Error in control relation: Invalid relation uuid while adding \
+               dynamic flag in SAT"
               ctxt
         in
-
         match
           check_less_or_equal_security_level
             node1.security_list
@@ -607,35 +697,42 @@ and check_security_relation (ctxt : Ctxt.t)
             ctxt.env
             ctxt.sec_params
             ctxt.lattice
+            ctxt.symbolic
             false
         with
-        | SAT -> verify_relations_events []
-        | UNSAT e ->
+        | new_ctxt, SAT -> verify_relations_events [] new_ctxt
+        | _, UNSAT e ->
           Error
             (( cr.loc
-             , "Does not flow in control relation event to expression ("
+             , "  Error information leak in control relation: event to \
+                expression ("
                ^ unparse_security_level' node1.security_list
                ^ ") -> " ^ " ("
                ^ unparse_security_level' security_level
                ^ ")" )
             :: e)
-        | Unknown e -> verify_relations_events e)))
+        | new_ctxt, Unknown e ->
+          print_endline @@ "Constraint: " ^ unparse_cnf_formula e;
+          verify_relations_events e new_ctxt)))
   | SpawnRelation (event, trigger_label, exp, prog) -> (
     match get_security_of_expr ctxt exp with
     | Error err ->
-      Error ((exp.loc, "Error in event expression " ^ event.data) :: err)
+      Error
+        ((exp.loc, "  Error in checking spawn guard expression " ^ event.data)
+        :: err)
     | Ok security_list -> (
       match Env.find_flat_opt event.data ctxt.env with
-      | None -> Error [ (cr.loc, "Error finding event: " ^ event.data) ]
+      | None ->
+        Error [ (cr.loc, "  Error finding the trigger event: " ^ event.data) ]
       | Some node -> (
         let spawn_creation ctxt =
           let new_ctxt =
             Ctxt.begin_scope trigger_label ctxt |> Ctxt.bind trigger_label node
-            (* Env.bind trigger_label node @@ Env.begin_scope ctxt.env *)
           in
           match check_security_graph new_ctxt (prog.events, prog.relations) with
           | Ok ctxt2 -> Ok (Ctxt.end_scope ctxt2)
-          | Error s -> Error ((cr.loc, "Error in spawn relation") :: s)
+          | Error s ->
+            Error ((cr.loc, " Error checking security in spawn relation") :: s)
         in
         match
           check_less_or_equal_security_level
@@ -645,39 +742,41 @@ and check_security_relation (ctxt : Ctxt.t)
             ctxt.env
             ctxt.sec_params
             ctxt.lattice
+            ctxt.symbolic
             false
         with
-        | UNSAT e ->
+        | _, UNSAT e ->
           Error
             (( exp.loc
-             , "Error in event " ^ event.data ^ " expression "
+             , "  Error in event " ^ event.data ^ " expression "
                ^ unparse_expr exp ^ " in spawn" )
             :: e)
-        | Unknown e -> begin
-          match
-            Ctxt.add_symbol
-              cr
-              e
-              "Error in control relation: Invalid relation uuid in Spawn"
-              ctxt
-          with
-          | Error e ->
-            Error
-              (( exp.loc
-               , "Error in event " ^ event.data ^ " expression "
-                 ^ unparse_expr exp ^ " in spawn" )
-              :: e)
-          | Ok ctxt2 -> spawn_creation ctxt2
-        end
-        | SAT -> spawn_creation ctxt)))
+        | symbolic, Unknown e ->
+          print_endline @@ "Constraint: " ^ unparse_cnf_formula e;
+          begin
+            match
+              Ctxt.add_symbol
+                cr
+                e
+                " Error in control relation: Invalid relation uuid in Spawn"
+                { ctxt with symbolic }
+            with
+            | Error e ->
+              Error
+                (( exp.loc
+                 , "  Error in event " ^ event.data ^ " expression "
+                   ^ unparse_expr exp ^ " in spawn" )
+                :: e)
+            | Ok ctxt2 -> spawn_creation ctxt2
+          end
+        | symbolic, SAT -> spawn_creation { ctxt with symbolic })))
 
 (*1. Compare levels of the event with the trigger, if there is no trigger true
-  2. Compare levels of the event with the data 3. Check wellform *)
-(* TODO: retornar num ponto comum o solve das expr*)
+    2. Compare levels of the event with the data
+  3. Check wellform *)
 and check_security_event (ctxt : Ctxt.t) event =
-  (* Find do  trigger resolver*)
   let check_security_trigger (event : event') (ctxt : Ctxt.t) =
-    if ctxt.trigger_stack = [] then Ok []
+    if ctxt.trigger_stack = [] then Ok (ctxt, [])
     else
       let trigger_node = Env.find_flat (Ctxt.get_trigger ctxt) ctxt.env in
       match
@@ -688,14 +787,19 @@ and check_security_event (ctxt : Ctxt.t) event =
           ctxt.env
           ctxt.sec_params
           ctxt.lattice
+          ctxt.symbolic
           true
       with
-      | UNSAT e ->
-        Error ((event.loc, "Error in security with event and trigger") :: e)
-      | SAT -> Ok []
-      | Unknown e ->
-        (* print_endline @@ unparse_cnf_formula e; *)
-        Ok e
+      | _, UNSAT e ->
+        Error
+          (( event.loc
+           , "Infomation leak: Error processing spawned event "
+             ^ unparse_event_info event.data.info.data
+             ^ " with trigger event "
+             ^ unparse_event_info trigger_node.info.data )
+          :: e)
+      | symbolic, SAT -> Ok ({ ctxt with symbolic }, [])
+      | symbolic, Unknown e -> Ok ({ ctxt with symbolic }, e)
   in
 
   let static_check_security_of_data_expr event ctxt =
@@ -763,17 +867,18 @@ and check_security_event (ctxt : Ctxt.t) event =
             ctxt.env
             ctxt.sec_params
             ctxt.lattice
+            ctxt.symbolic
             false
         with
-        | SAT -> Ok []
-        | UNSAT e ->
+        | symbolic, SAT -> Ok ({ ctxt with symbolic }, [])
+        | _, UNSAT e ->
           Error
             (( ty_expr.loc
              , "Error static ifc in expression of event "
                ^ (fst event.info.data).data ^ ":" ^ (snd event.info.data).data
              )
             :: e)
-        | Unknown e -> Ok e))
+        | symbolic, Unknown e -> Ok ({ ctxt with symbolic }, e)))
     | Computation expr -> (
       match get_security_of_expr ctxt expr with
       | Error e ->
@@ -791,16 +896,17 @@ and check_security_event (ctxt : Ctxt.t) event =
             ctxt.env
             ctxt.sec_params
             ctxt.lattice
+            ctxt.symbolic
             false
         with
-        | SAT -> Ok []
-        | UNSAT e ->
+        | symbolic, SAT -> Ok ({ ctxt with symbolic }, [])
+        | _, UNSAT e ->
           Error
             (( expr.loc
              , "Error static ifc in node exp " ^ (fst event.info.data).data
                ^ ":" ^ (snd event.info.data).data )
             :: e)
-        | Unknown e -> Ok e))
+        | symbolic, Unknown e -> Ok ({ ctxt with symbolic }, e)))
   in
 
   let check_wellformedness _ = Ok [] in
@@ -837,14 +943,16 @@ and check_security_event (ctxt : Ctxt.t) event =
       (( event.data.info.loc
        , "Error checking ifc trigger in event " ^ id.data ^ ":" ^ label.data )
       :: e)
-  | Ok cnf_list -> (
-    match static_check_security_of_data_expr event.data ctxt with
+  | Ok (ctxt1, cnf_list) -> (
+    print_endline @@ "Constraint: " ^ unparse_cnf_formula cnf_list;
+    match static_check_security_of_data_expr event.data ctxt1 with
     | Error e ->
       Error
         (( event.data.info.loc
          , "Error checking ifc levels in event " ^ id.data ^ ":" ^ label.data )
         :: e)
-    | Ok cnf_list2 -> (
+    | Ok (ctxt, cnf_list2) -> (
+      print_endline @@ "Constraint: " ^ unparse_cnf_formula cnf_list2;
       match check_wellformedness event with
       | Error e ->
         Error
@@ -854,9 +962,6 @@ and check_security_event (ctxt : Ctxt.t) event =
           :: e)
       | Ok cnf_list3 -> (
         let new_ctxt = Ctxt.create_and_bind_node id.data event.data ctxt in
-        (* Env.bind id.data (mkNodeEvent event.data env) env *)
-        (* let new_env = bind id.data (mkNodeEvent event.data env) env in *)
-        (* TODO: retorna ctxt com o cnf and solver de tudo*)
         match
           static_checking_security_param
             event.data.security_level.data
@@ -866,8 +971,8 @@ and check_security_event (ctxt : Ctxt.t) event =
         | Error e ->
           Error
             (( event.data.info.loc
-             , "Error in static checking security param in event " ^ id.data
-               ^ ":" ^ label.data )
+             , "Error checking security parameters in event " ^ id.data ^ ":"
+               ^ label.data )
             :: e)
         | Ok list -> (
           match
@@ -878,39 +983,20 @@ and check_security_event (ctxt : Ctxt.t) event =
               ctxt.env
               ctxt.sec_params
               ctxt.lattice
+              ctxt.symbolic
               false
           with
-          | SAT -> begin
-            match
-              Ctxt.add_symbol
-                event
-                (cnf_and (cnf_and cnf_list cnf_list2) cnf_list3)
-                "Error in event: Invalid event uuid in SAT"
-                new_ctxt
-            with
-            | Error e ->
-              Error
-                (( event.data.info.loc
-                 , "Error in static checking security param in event " ^ id.data
-                   ^ ":" ^ label.data )
-                :: e)
-            | Ok new_ctxt -> Ok new_ctxt
-          end
-          | UNSAT e ->
-            Error
-              (( event.data.info.loc
-               , "Error in static checking security param in event " ^ id.data
-                 ^ ":" ^ label.data )
-              :: e)
-          | Unknown e ->
-            (* print_endline @@ unparse_cnf_formula e; *)
+          | symbolic, SAT ->
+            let new_cond = cnf_and (cnf_and cnf_list cnf_list2) cnf_list3 in
+            print_endline @@ "Constraint in event <=: "
+            ^ unparse_cnf_formula new_cond;
             begin
               match
                 Ctxt.add_symbol
                   event
-                  (cnf_and e (cnf_and (cnf_and cnf_list cnf_list2) cnf_list3))
-                  "Error in event: Invalid event uuid in Unknown"
-                  new_ctxt
+                  new_cond
+                  "Error in event: Invalid event uuid in SAT"
+                  { new_ctxt with symbolic }
               with
               | Error e ->
                 Error
@@ -919,53 +1005,92 @@ and check_security_event (ctxt : Ctxt.t) event =
                      ^ id.data ^ ":" ^ label.data )
                   :: e)
               | Ok new_ctxt -> Ok new_ctxt
+            end
+          | _, UNSAT e ->
+            Error
+              (( event.data.info.loc
+               , "Error in static checking security param in event " ^ id.data
+                 ^ ":" ^ label.data )
+              :: e)
+          | symbolic, Unknown e ->
+            let new_cond =
+              cnf_and e (cnf_and (cnf_and cnf_list cnf_list2) cnf_list3)
+            in
+            print_endline @@ "Constraint in event unkown <=: "
+            ^ unparse_cnf_formula new_cond;
+            begin
+              match
+                Ctxt.add_symbol
+                  event
+                  new_cond
+                  "Error in event: Invalid event uuid in Unknown"
+                  { new_ctxt with symbolic }
+              with
+              | Error e ->
+                Error
+                  (( event.data.info.loc
+                   , "Error checking security paramarameters in event "
+                     ^ id.data ^ ":" ^ label.data )
+                  :: e)
+              | Ok new_ctxt -> Ok new_ctxt
             end))))
 
 and check_less_or_equal_security_level (event_security : security_level)
     (env : node Env.t) (exp_security : security_level) (env2 : node Env.t)
-    sec_params lattice relation =
-  (* let debug_map_list (l : (cnf_formula, (loc * element_uid) list) leakError)
-     = let open Printf in match l with | UNSAT _ -> print_endline "UNSAT" | SAT
-     -> print_endline "SAT " | Unknown s -> unparse_cnf_formula s |>
-     print_endline in *)
-  let sat_list =
-    List.map
-      (fun node_2 ->
-        let aux_list =
-          List.map
-            (fun node_1 ->
+    sec_params lattice symbolic_env relation =
+  let (new_ctxt, sat_list) :
+      CnfExprCtxt.t * (cnf_formula, (loc * role_label) list) leakError list =
+    List.fold_left
+      (fun (ctx1, list) l ->
+        let resCtxt, resList =
+          List.fold_left
+            (fun (ctxt2, list2) node_1 ->
               if relation then
-                depth_first_search node_1 node_2 !lattice [] sec_params env env2
-              else
-                let p =
+                let ctxt3, list3 =
                   depth_first_search
-                    node_2
+                    node_1
+                    l
+                    !lattice
+                    []
+                    sec_params
+                    env
+                    env2
+                    ctxt2
+                in
+                (ctxt3, list3 :: list2)
+              else
+                let ctxt3, list3 =
+                  depth_first_search
+                    l
                     node_1
                     !lattice
                     []
                     sec_params
                     env2
                     env
+                    ctxt2
                 in
-                p)
+                (ctxt3, list3 :: list2))
+            (ctx1, [])
             event_security
         in
-        CnfExprCtxt.or_list aux_list)
+        (resCtxt, CnfExprCtxt.or_list resList :: list))
+      (symbolic_env, [])
       exp_security
   in
-  CnfExprCtxt.and_list sat_list
+  (new_ctxt, CnfExprCtxt.and_list sat_list)
 
 and depth_first_search (node1 : sec_label') (node2 : sec_label')
     (lattice : string list TreeMap.t) (visited : string list) params
-    (env : node Env.t) env2 =
-  if List.mem (fst node1.data).data visited then SAT
+    (env : node Env.t) env2 symbolic =
+  if List.mem (fst node1.data).data visited then (symbolic, SAT)
   else if (fst node1.data).data = (fst node2.data).data then
-    compareSecurityLevels node1 node2 params env env2
+    compareSecurityLevels node1 node2 params env env2 symbolic
   else
     let rec depth_first_search' (label1 : string) (label2 : string)
         (lattice : string list TreeMap.t) (visited : string list)
-        (path : string list) =
-      if List.mem label1 visited then SAT
+        (path : string list) symbolic2 =
+      if List.mem label1 visited then (symbolic2, SAT)
       else if label1 = label2 then
         compareSecurityLevels
           (annotate (annotate label1, []))
@@ -973,20 +1098,28 @@ and depth_first_search (node1 : sec_label') (node2 : sec_label')
           params
           env
           env2
+          symbolic2
       else
         match TreeMap.find_opt label1 lattice with
         | Some l ->
-          CnfExprCtxt.or_list
-            (List.map
-               (fun l' ->
-                 depth_first_search'
-                   l'
-                   label2
-                   lattice
-                   (label1 :: visited)
-                   (label1 :: path))
-               l)
-        | None -> SAT
+          let acc, list =
+            List.fold_left
+              (fun (acc, list) l' ->
+                let acc', l' =
+                  depth_first_search'
+                    l'
+                    label2
+                    lattice
+                    (label1 :: visited)
+                    (label1 :: path)
+                    acc
+                in
+                (acc', l' :: list))
+              (symbolic2, [])
+              l
+          in
+          (acc, CnfExprCtxt.or_list list)
+        | None -> (symbolic2, SAT)
     in
     depth_first_search'
       (fst node1.data).data
@@ -994,14 +1127,115 @@ and depth_first_search (node1 : sec_label') (node2 : sec_label')
       lattice
       visited
       []
+      symbolic
 
 and compareSecurityLevels (node1 : sec_label') (node2 : sec_label') params env
-    env2 =
+    env2 symbolic =
   let compareParamList (list1 : sec_label_param' named_param' list)
-      (list2 : sec_label_param' named_param' list) params env env2 =
-    let listResult =
-      List.map
-        (fun param ->
+      (list2 : sec_label_param' named_param' list) params env env2
+      (symbolic : CnfExprCtxt.t) =
+    (* let listResult1 : (cnf_formula, (loc * role_label) list) leakError list =
+         List.map
+           (fun param ->
+             let find_param param_name list =
+               match
+                 List.find_opt
+                   (fun el ->
+                     let named, _ = el.data in
+                     String.compare param_name named.data = 0)
+                   list
+               with
+               | Some s1 ->
+                 let _, value = s1.data in
+                 value.data
+               | None -> Bot
+             in
+             match (find_param param list1, find_param param list2) with
+             | Bot, _ | Parameterised _, Top | Top, Top -> SAT
+             | Parameterised exp1, Parameterised exp2 -> (
+               match (EvalExpr.evalExpr exp1 env, EvalExpr.evalExpr exp2 env2) with
+               | Int n1, Int n2 ->
+                 if n1 == n2 then SAT
+                 else
+                   UNSAT
+                     [ ( exp1.loc
+                       , " [Error] Expected two identical integers, actual \
+                          values: " ^ unparse_expr exp1 ^ " = " ^ unparse_expr exp2
+                       )
+                     ]
+               | String n1, String n2 ->
+                 if String.compare n1 n2 == 0 then SAT
+                 else
+                   UNSAT
+                     [ ( exp1.loc
+                       , " [Error] Expected two identical strings, got: "
+                         ^ unparse_expr exp1 ^ " = " ^ unparse_expr exp2 )
+                     ]
+               | Bool n1, Bool n2 when n1 = n2 -> SAT
+               | Error s, _ ->
+                 UNSAT
+                   [ ( exp1.loc
+                     , " [Error] Processing the first expression: "
+                       ^ unparse_expr exp1 ^ " = " ^ unparse_expr exp2 )
+                   ; s
+                   ]
+               | _, Error s ->
+                 UNSAT
+                   [ ( exp2.loc
+                     , " [Error] Processing the second expression: "
+                       ^ unparse_expr exp1 ^ " = " ^ unparse_expr exp2 )
+                   ; s
+                   ]
+               | Unknown, Unknown ->
+                 (* Unknown (Some exp1, Some exp2, false) *)
+                 Unknown
+                   [ [ Positive (CnfSymEq (unparse_expr exp1, unparse_expr exp2)) ]
+                   ]
+               | Unknown, Int s ->
+                 (* let new_expr = annotate ~loc:exp2.loc (Choreo.IntLit s) in
+                    Unknown (Some exp1, Some new_expr, true) *)
+                 Unknown [ [ Positive (CnfEq (unparse_expr exp1, IntLit s)) ] ]
+               | Unknown, Bool s ->
+                 (* let new_expr =
+                      annotate ~loc:exp2.loc (if s then Choreo.True else Choreo.False)
+                    in
+                    Unknown (Some exp1, Some new_expr, true) *)
+                 Unknown [ [ Positive (CnfEq (unparse_expr exp1, BoolLit s)) ] ]
+               | Unknown, String s ->
+                 (* let new_expr = annotate ~loc:exp2.loc (Choreo.StringLit s) in
+                    Unknown (Some exp1, Some new_expr, true) *)
+                 Unknown [ [ Positive (CnfEq (unparse_expr exp1, StringLit s)) ] ]
+               | Int s, Unknown ->
+                 (* let new_expr = annotate ~loc:exp1.loc (Choreo.IntLit s) in
+                    Unknown (Some new_expr, Some exp2, true) *)
+                 Unknown [ [ Positive (CnfEq (unparse_expr exp2, IntLit s)) ] ]
+               | Bool s, Unknown ->
+                 (* let new_expr =
+                      annotate ~loc:exp1.loc (if s then Choreo.True else Choreo.False)
+                    in
+                    Unknown (Some new_expr, Some exp2, true) *)
+                 Unknown [ [ Positive (CnfEq (unparse_expr exp2, BoolLit s)) ] ]
+               | String s, Unknown ->
+                 (* let new_expr = annotate ~loc:exp1.loc (Choreo.StringLit s) in
+                    Unknown (Some exp2, Some new_expr, true) *)
+                 Unknown [ [ Positive (CnfEq (unparse_expr exp2, StringLit s)) ] ]
+               | _ ->
+                 UNSAT
+                   [ ( exp1.loc
+                     , " [Error] comparing missmatch types exprs: "
+                       ^ unparse_expr exp1 ^ " = " ^ unparse_expr exp2 )
+                   ])
+             | _ ->
+               UNSAT
+                 [ ( node1.loc
+                   , " [Error] comparing params values of Security levels" )
+                 ])
+           params
+       in *)
+    let listResult :
+        CnfExprCtxt.t * (cnf_formula, (loc * role_label) list) leakError list =
+      List.fold_left
+        (fun (ctxt, list) param ->
           let find_param param_name list =
             match
               List.find_opt
@@ -1016,69 +1250,103 @@ and compareSecurityLevels (node1 : sec_label') (node2 : sec_label') params env
             | None -> Bot
           in
           match (find_param param list1, find_param param list2) with
-          | Bot, _ | Parameterised _, Top | Top, Top -> SAT
+          | Bot, _ | Parameterised _, Top | Top, Top -> (ctxt, SAT :: list)
           | Parameterised exp1, Parameterised exp2 -> (
             match (EvalExpr.evalExpr exp1 env, EvalExpr.evalExpr exp2 env2) with
             | Int n1, Int n2 ->
-              if n1 == n2 then SAT
+              if n1 == n2 then (ctxt, SAT :: list)
               else
-                UNSAT
-                  [ ( exp1.loc
-                    , "Error in comparing exprs: " ^ unparse_expr exp1 ^ " = "
-                      ^ unparse_expr exp2 )
-                  ]
+                ( ctxt
+                , UNSAT
+                    [ ( exp1.loc
+                      , " [Error] Expected two identical integers, actual \
+                         values: " ^ unparse_expr exp1 ^ " = "
+                        ^ unparse_expr exp2 )
+                    ]
+                  :: list )
             | String n1, String n2 ->
-              if String.compare n1 n2 == 0 then SAT
+              if String.compare n1 n2 == 0 then (ctxt, SAT :: list)
               else
-                UNSAT
-                  [ ( exp1.loc
-                    , "Error in comparing exprs: " ^ unparse_expr exp1 ^ " = "
-                      ^ unparse_expr exp2 )
-                  ]
-            | Bool n1, Bool n2 when n1 = n2 -> SAT
+                ( ctxt
+                , UNSAT
+                    [ ( exp1.loc
+                      , " [Error] Expected two identical strings, got: "
+                        ^ unparse_expr exp1 ^ " = " ^ unparse_expr exp2 )
+                    ]
+                  :: list )
+            | Bool n1, Bool n2 when n1 = n2 -> (ctxt, SAT :: list)
             | Error s, _ ->
-              UNSAT
-                [ ( exp1.loc
-                  , "Error fst expr in comparing exprs: " ^ unparse_expr exp1
-                    ^ " = " ^ unparse_expr exp2 )
-                ; s
-                ]
-            | _, Error s ->
-              UNSAT
-                [ ( exp2.loc
-                  , "Error snd expr in comparing exprs: " ^ unparse_expr exp1
-                    ^ " = " ^ unparse_expr exp2 )
-                ; s
-                ]
+              ( ctxt
+              , UNSAT
+                  [ ( exp1.loc
+                    , " [Error] Expected two identical strings, got: "
+                      ^ unparse_expr exp1 ^ " = " ^ unparse_expr exp2 )
+                  ; s
+                  ]
+                :: list )
+            | _, Error s2 ->
+              ( ctxt
+              , UNSAT
+                  [ ( exp2.loc
+                    , " [Error] Processing the second expression: "
+                      ^ unparse_expr exp1 ^ " = " ^ unparse_expr exp2 )
+                  ; s2
+                  ]
+                :: list )
             | Unknown, Unknown ->
-              Unknown
-                [ [ Positive (CnfSymEq (unparse_expr exp1, unparse_expr exp2)) ]
-                ]
+              let symb1 = unparse_expr exp1 in
+              let ctxt1 = CnfExprCtxt.update_expr'_env symb1 exp1 ctxt in
+              let symb2 = unparse_expr exp2 in
+              let ctxt2 = CnfExprCtxt.update_expr'_env symb2 exp2 ctxt1 in
+              (ctxt2, Unknown [ [ Positive (CnfSymEq (symb1, symb2)) ] ] :: list)
             | Unknown, Int s ->
-              Unknown [ [ Positive (CnfEq (unparse_expr exp1, IntLit s)) ] ]
+              let symb1 = unparse_expr exp1 in
+              let ctxt1 = CnfExprCtxt.update_expr'_env symb1 exp1 ctxt in
+              (ctxt1, Unknown [ [ Positive (CnfEq (symb1, IntLit s)) ] ] :: list)
             | Unknown, Bool s ->
-              Unknown [ [ Positive (CnfEq (unparse_expr exp1, BoolLit s)) ] ]
+              let symb1 = unparse_expr exp1 in
+              let ctxt1 = CnfExprCtxt.update_expr'_env symb1 exp1 ctxt in
+              ( ctxt1
+              , Unknown [ [ Positive (CnfEq (symb1, BoolLit s)) ] ] :: list )
             | Unknown, String s ->
-              Unknown [ [ Positive (CnfEq (unparse_expr exp1, StringLit s)) ] ]
+              let symb1 = unparse_expr exp1 in
+              let ctxt1 = CnfExprCtxt.update_expr'_env symb1 exp1 ctxt in
+              ( ctxt1
+              , Unknown [ [ Positive (CnfEq (symb1, StringLit s)) ] ] :: list )
             | Int s, Unknown ->
-              Unknown [ [ Positive (CnfEq (unparse_expr exp2, IntLit s)) ] ]
+              let symb2 = unparse_expr exp2 in
+              let ctxt1 = CnfExprCtxt.update_expr'_env symb2 exp1 ctxt in
+              (ctxt1, Unknown [ [ Positive (CnfEq (symb2, IntLit s)) ] ] :: list)
             | Bool s, Unknown ->
-              Unknown [ [ Positive (CnfEq (unparse_expr exp2, BoolLit s)) ] ]
+              let symb2 = unparse_expr exp2 in
+              let ctxt1 = CnfExprCtxt.update_expr'_env symb2 exp1 ctxt in
+              ( ctxt1
+              , Unknown [ [ Positive (CnfEq (symb2, BoolLit s)) ] ] :: list )
             | String s, Unknown ->
-              Unknown [ [ Positive (CnfEq (unparse_expr exp2, StringLit s)) ] ]
+              let symb2 = unparse_expr exp2 in
+              let ctxt1 = CnfExprCtxt.update_expr'_env symb2 exp1 ctxt in
+              ( ctxt1
+              , Unknown [ [ Positive (CnfEq (symb2, StringLit s)) ] ] :: list )
             | _ ->
-              UNSAT
-                [ ( exp1.loc
-                  , "Error in comparing missmatch types exprs: "
-                    ^ unparse_expr exp1 ^ " = " ^ unparse_expr exp2 )
-                ])
+              ( ctxt
+              , UNSAT
+                  [ ( exp1.loc
+                    , " [Error] comparing missmatch types exprs: "
+                      ^ unparse_expr exp1 ^ " = " ^ unparse_expr exp2 )
+                  ]
+                :: list ))
           | _ ->
-            UNSAT
-              [ (node1.loc, "Error in comparing params of Security levels") ])
+            ( ctxt
+            , UNSAT
+                [ ( node1.loc
+                  , " [Error] comparing params values of Security levels" )
+                ]
+              :: list ))
+        (symbolic, [])
         params
     in
-    let p = CnfExprCtxt.and_list listResult in
-    p
+    let p = CnfExprCtxt.and_list (snd listResult) in
+    (fst listResult, p)
   in
   (* let open Frontend in *)
   match (node1.data, node2.data) with
@@ -1086,9 +1354,20 @@ and compareSecurityLevels (node1 : sec_label') (node2 : sec_label') params env
     when String.compare s1.data s2.data = 0 -> (
     match TreeMap.find_opt s1.data !params with
     | Some param_list ->
-      compareParamList list_params1 list_params2 param_list env env2
-    | None -> UNSAT [ (node1.loc, "Error in security level comparison") ])
-  | _ -> UNSAT [ (node1.loc, "Error in comparing security levels") ]
+      compareParamList list_params1 list_params2 param_list env env2 symbolic
+    | None ->
+      ( symbolic
+      , UNSAT
+          [ ( node1.loc
+            , "Error in security level comparison in loc "
+              ^ string_of_loc node1.loc ^ " and/or " ^ string_of_loc node2.loc
+            )
+          ] ))
+  | _ ->
+    ( symbolic
+    , UNSAT
+        [ (node1.loc, "Error in comparing security levels, missmatch levels") ]
+    )
 
 (* Get the node pc list without duplicates*)
 (* Get the level from lists given a filter_function can be LuB(least upper
@@ -1103,11 +1382,17 @@ and get_levels_from_SC_List filter_function (pc_list : security_level)
           List.exists
             (fun l' ->
               match
-                compareSecurityLevels l l' ctxt.sec_params ctxt.env ctxt.env
+                compareSecurityLevels
+                  l
+                  l'
+                  ctxt.sec_params
+                  ctxt.env
+                  ctxt.env
+                  ctxt.symbolic
               with
-              | SAT -> true
-              | Unknown _ -> false
-              | UNSAT _ -> false)
+              | _, SAT -> true
+              | _, Unknown _ -> false
+              | _, UNSAT _ -> false)
             acc
         then acc
         else l :: acc)
@@ -1166,8 +1451,9 @@ and filter_higher_levels (pc : sec_label' list) ctxt =
                 ctxt.sec_params
                 ctxt.env
                 ctxt.env
+                ctxt.symbolic
             with
-            | SAT -> false
+            | _, SAT -> false
             | _ -> true)
           filtered
       in
@@ -1175,13 +1461,15 @@ and filter_higher_levels (pc : sec_label' list) ctxt =
   in
   filter_levels [] pc
 
+(**)
 and concat_list list loc (ctxt : Ctxt.t) :
     (security_level, (loc * role_label) list) result =
   match
     List.fold_left
       (fun acc l ->
         match acc with
-        | Error e -> Error ((loc, "Error in List") :: e)
+        | Error e ->
+          Error ((loc, "[Error] While concatenating security levels ") :: e)
         | Ok acc' -> (
           match l with
           | Ok l' -> Ok (acc' @ l')
