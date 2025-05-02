@@ -55,12 +55,11 @@ let process_choreography lexbuf =
   (* TODO [post-demo] have projections return something more friendly than the
      entire projection context - need to check what's needed first *)
   Projections.project program |> fun _projection_ctxts ->
-  Ok ()
-(* let babel_unparsed = List.map (Babel.Unparser.babel_unparse
-   event_types_by_label) projection_ctxts in *)
-(* TODO -> let unparsed_projections = .... *)
-(* let babel_unparsed = Babel.Translate.translate projections |>
-   Babel.Unparser.unparse ~indent:"\t " in *)
+    (* let babel_unparsed = List.map (Babel.Unparser.babel_unparse
+    event_types_by_label) projection_ctxts in *)
+    (* TODO -> let unparsed_projections = .... *)
+    Translation.Babel.test ();
+    Ok ()
 
 (* TODO -> List.iter unparsed_projections unparse_projection_to_file *)
 (* unparse_to_file_with_blob_tmpl "output_babel.java" ([%blob

@@ -28,9 +28,21 @@
 
   (*
     =============================================================================
-    Expressions & Type Expressions
+    Values, Computation Expressions and Type Epxressions
     =============================================================================
   *)
+
+  and record_field_val' = value' named_param'
+  
+  and value' = value annotated
+
+  and value =
+    | BooleanVal of bool
+    | IntVal of int
+    | StringVal of string
+    | RecordVal of record_field_val' list
+
+
   and type_expr' = type_expr annotated
 
   and event_ty = identifier
@@ -261,9 +273,9 @@
   and event_marking' = event_marking annotated
 
   and event_marking =
-    { executed' : bool annotated
-    ; pending' : bool annotated
-    ; included' : bool annotated
+    { is_pending' : bool annotated
+    ; is_included' : bool annotated
+    ; default_val : value' option
     }
 
   (*

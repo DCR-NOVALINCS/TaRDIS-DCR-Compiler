@@ -14,11 +14,13 @@ and event =
   ; id : Choreo.event_id
   ; label : Choreo.event_ty
   ; data_expr : Choreo.data_expr
-  ; marking : Choreo.event_marking
+  ; marking : marking
   ; self : CnfRole.t
   ; communication : communication
   ; symbols : Choreo.expr' StringMap.t
   }
+
+  and marking = Choreo.event_marking
 
   and relation =
     | ControlFlowRelation of

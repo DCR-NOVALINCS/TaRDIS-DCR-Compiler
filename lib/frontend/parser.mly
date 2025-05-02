@@ -81,27 +81,27 @@ open Syntax
 
 let default_marking : event_marking' =
   annotate
-    { executed' = annotate false
-    ; pending' = annotate false
-    ; included' = annotate true
+    { is_pending' = annotate false
+    ; is_included' = annotate true
+    ; default_val = Option.none
     }
 
 let default_marking_pend =
-  { executed' = annotate false
-  ; pending' = annotate true
-  ; included' = annotate true
+  { is_pending' = annotate true
+  ; is_included' = annotate true
+  ; default_val = Option.none
   }
 
 let default_marking_excl =
-  { executed' = annotate false
-  ; pending' = annotate false
-  ; included' = annotate false
+  { is_pending' = annotate false
+  ; is_included' = annotate false
+  ; default_val = Option.none
   }
 
 let default_marking_pend_excl =
-  { executed' = annotate false
-  ; pending' = annotate true
-  ; included' = annotate false
+  { is_pending' = annotate true
+  ; is_included' = annotate false
+  ; default_val = Option.none
   }
 
 (*  TODO cleanup required here *)
@@ -426,7 +426,6 @@ user_set_role_expr_param_alias:
 | ALIAS; alias=id     {alias}
 ;
 
-// user_set_param_val'
 user_set_role_expr_param_val: mark_loc_ty(plain_user_set_role_expr_param_val) {$1}
 plain_user_set_role_expr_param_val:
 | user_set_role_expr_param_val_fact        {Expr($1)}
@@ -447,28 +446,10 @@ plain_user_set_role_expr_param_val_fact:
    PropDeref(expr, prop) }
 ;
 
+// TODO revisit to include value
 node_marking: mark_loc_ty(plain_node_marking) {$1}
 plain_node_marking:
-  | exec = bool; COMMA; pend = bool; COMMA; inc = bool    { {executed' = exec; pending' = pend; included' = inc} }
-;
-
-// kind_expr: mark_loc_ty(plain_kind_expr) {$1}
-// plain_kind_expr:   
-// | initiator = participant                                 { Action initiator }
-// | initiator = participant; ARROW;
-//    receivers=separated_nonempty_list(COMMA, participant)  { UserInteraction (initiator, receivers) }
-// ;
-
-// participant: mark_loc_ty(plain_participant) {$1}
-// plain_participant:
-// | ID                                                                         {$1}
-// | role=ID; params=delimited(LPAR, separated_nonempty_list(COMMA, plain_participant_param), RPAR)  {participant_to_string role params}
-// | INITIATOR; event_id=delimited(LPAR id, RPAR)    {Initiator(event_id)}
-// ;
-
-// plain_participant_param:
-// | INT     {string_of_int $1}
-// | STR      {$1}
+  | pend = bool; COMMA; inc = bool    { {is_pending' = pend; is_included' = inc; default_val = Option.none} }
 ;
 
 type_expr: mark_loc_ty_ty(plain_type_expr) {$1}

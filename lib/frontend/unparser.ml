@@ -1,5 +1,7 @@
 open Syntax
 
+let sprintf = Printf.sprintf
+
 let string_escape s = "\"" ^ s ^ "\""
 
 let string_escape' s = "'" ^ s ^ "'"
@@ -51,6 +53,20 @@ and unparse_lattice_flow_decls flow_decls =
     List.map unparse_lattice_flow_decl flow_decls
   in
   String.concat "\n" unparsed_lattice_flow_decls
+
+and unparse_value' value' = unparse_value value'.data
+
+and unparse_value = function
+  | BooleanVal bool_val -> Bool.to_string bool_val
+  | IntVal int_val -> Int.to_string int_val
+  | StringVal string_val -> string_val
+  | RecordVal record_fields ->
+    List.map
+      (fun field' ->
+        let name', value' = field'.data in
+        sprintf "%s=%s" name'.data (unparse_value' value'))
+      record_fields
+    |> String.concat ", " |> sprintf "{%s}"
 
 and unparse_type_expr ty = unparse_type ty.data
 
@@ -163,9 +179,9 @@ and unparse_event_io io' =
   end
 
 and unparse_event_marking_as_prefix marking' =
-  let { executed' = _; pending'; included' } = marking' in
+  let { is_pending'; is_included'; _ } = marking' in
   begin
-    match (pending'.data, included'.data) with
+    match (is_pending'.data, is_included'.data) with
     | true, false -> "!%"
     | true, true -> "!"
     | false, true -> ""
@@ -193,9 +209,9 @@ and unparse_user_set_expr = function
   | Initiator event_id' -> Printf.sprintf "@Initiator(%s)" event_id'.data
   | Receiver event_id' -> Printf.sprintf "@Receiver(%s)" event_id'.data
 
-and unparse_user_set_exprs user_set_exprs = 
+and unparse_user_set_exprs user_set_exprs =
   List.map unparse_user_set_expr (deannotate_list user_set_exprs)
-    |> String.concat ", "
+  |> String.concat ", "
 
 and unparse_event_participants participants' =
   match participants'.data with
@@ -205,12 +221,15 @@ and unparse_event_participants participants' =
     |> String.concat ", "
     |> Printf.sprintf "%s -> %s" (unparse_user_set_expr initiator'.data)
 
-and unparse_event_marking_extended { executed'; pending'; included' } =
+and unparse_event_marking_extended { is_pending'; is_included'; default_val } =
+  let default_val =
+    Option.fold default_val ~none:String.empty ~some:(fun value' ->
+        unparse_value' value')
+  in
   let short_string_of_bool bool_val = if bool_val then "T" else "F" in
-  let exec = short_string_of_bool executed'.data in
-  let pend = short_string_of_bool pending'.data in
-  let inc = short_string_of_bool included'.data in
-  Printf.sprintf "{ex:%s; pe:%s; in:%s}" exec pend inc
+  let pend = short_string_of_bool is_pending'.data in
+  let inc = short_string_of_bool is_included'.data in
+  Printf.sprintf "{pe:%s; in:%s; default:%s}" pend inc default_val
 
 and unparse_events indent abbreviated events =
   let unparse_event event' =
