@@ -36,6 +36,12 @@ and event =
 
   and value = Choreo.value
 
+  and record_field_expr' = Choreo.expr' Choreo.named_param'
+
+  and expr' = Choreo.expr'
+
+  and expr = Choreo.expr
+
   and relation =
     | ControlFlowRelation of
         Choreo.element_uid

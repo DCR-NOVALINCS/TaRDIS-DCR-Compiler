@@ -69,14 +69,14 @@
     | False
     | IntLit of int
     | StringLit of string
-    | Parenthesized of expr'
-    | BinaryOp of expr' * expr' * binary_op_type
-    | UnaryOp of expr' * unary_op_type
     | EventRef of identifier'
     | Trigger of string
-    | PropDeref of expr' * property_name'
-    | List of expr' list
     | Record of record_field' list
+    | PropDeref of expr' * property_name'
+    | BinaryOp of expr' * expr' * binary_op_type
+    | UnaryOp of expr' * unary_op_type
+    | Parenthesized of expr'
+    | List of expr' list
 
   and binary_op' = binary_op annotated
 
