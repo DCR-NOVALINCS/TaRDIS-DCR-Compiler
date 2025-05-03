@@ -54,8 +54,10 @@ and encode_type_expr (type_expr : Choreo.type_expr) : string * Basic.t =
     ("recordType", `Assoc [ ("fields", `List type_fields) ])
   | _ -> assert false
 
-and encode_expr' (expr' : expr') =
-  match expr'.data with
+and encode_expr' (expr' : expr') = encode_expr expr'.data
+
+and encode_expr (expr : expr) =
+  match expr with
   | True -> `Assoc [ ("boolLit", `Assoc [ ("value", `Bool true) ]) ]
   | False -> `Assoc [ ("boolLit", `Assoc [ ("value", `Bool false) ]) ]
   | IntLit int_val -> `Assoc [ ("intLit", `Assoc [ ("value", `Int int_val) ]) ]
@@ -127,6 +129,29 @@ and encode_expr' (expr' : expr') =
         assert false
     end
   | _ -> assert false
+
+and encode_user_set_expr' (user_set_expr' : user_set_expr') =
+  encode_user_set_expr user_set_expr'.data
+
+and encode_user_set_expr (user_set_expr : user_set_expr) =
+    match user_set_expr with
+    | RoleExpr { data = role', params; _ } ->
+      let roleLabel = ("roleLabel", `String role'.data) in
+      List.map
+        (fun ({ data = name', value'; _ } :
+               user_set_param_val' Choreo.named_param')
+           ->
+          let name = ("name", `String name'.data) in
+          match value'.data with
+          | Any -> `Assoc [ name ]
+          | Expr expr' -> `Assoc [ name; ("value", encode_expr' expr') ])
+        params
+      |> fun (params : Basic.t list) ->
+      `Assoc [ ("roleExpr", `Assoc [ roleLabel; ("params", `List params) ]) ]
+    | Initiator event_id' ->
+      `Assoc [ ("initiatorExpr", `Assoc [("eventId",`String event_id'.data)]) ]
+    | Receiver event_id' -> `Assoc [ ("receiverExpr", `Assoc [("eventId",`String event_id'.data)]) ]
+  
 
 let encode_data_expr (data_expr : Choreo.data_expr) : Basic.t =
   match data_expr with
@@ -226,7 +251,11 @@ let test_computations_exprs () =
          ]
   in
   let binary_int_add' =
-    annotate @@ BinaryOp (annotate ~ty:(Some({t_expr=IntTy; is_const=true})) (IntLit 2), annotate ~ty:(Some({t_expr=IntTy; is_const=true})) (IntLit 3), Add)
+    annotate
+    @@ BinaryOp
+         ( annotate ~ty:(Some { t_expr = IntTy; is_const = true }) (IntLit 2)
+         , annotate ~ty:(Some { t_expr = IntTy; is_const = true }) (IntLit 3)
+         , Add )
   in
   let propDeref' =
     annotate
@@ -244,3 +273,18 @@ let test_computations_exprs () =
          ]
   in
   print_endline @@ Yojson.Basic.pretty_to_string @@ encode_expr' record_expr'
+
+let test_user_set_exprs () =
+  let annotate = Choreo.annotate in
+  let role_expr_param_p1 = annotate (annotate "p1", annotate Any)
+  and role_expr_param_p2 =
+    annotate (annotate "p2", annotate (Expr (annotate (Choreo.IntLit 2))))
+  in
+  let role_expr' =
+    annotate
+      (RoleExpr
+         (annotate (annotate "P", [ role_expr_param_p1; role_expr_param_p2 ])))
+  in
+  let receiver_expr' = annotate (Receiver (annotate "e0")) in
+  print_endline @@ Yojson.Basic.pretty_to_string @@ encode_user_set_expr' role_expr';
+  print_endline @@ Yojson.Basic.pretty_to_string @@ encode_user_set_expr' receiver_expr'

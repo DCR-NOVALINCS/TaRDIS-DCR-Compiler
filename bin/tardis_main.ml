@@ -58,7 +58,7 @@ let process_choreography lexbuf =
     (* let babel_unparsed = List.map (Babel.Unparser.babel_unparse
     event_types_by_label) projection_ctxts in *)
     (* TODO -> let unparsed_projections = .... *)
-    Translation.Babel.test_computations_exprs ();
+    Translation.Babel.test_user_set_exprs ();
     Ok ()
 
 (* TODO -> List.iter unparsed_projections unparse_projection_to_file *)

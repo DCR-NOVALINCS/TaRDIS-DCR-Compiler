@@ -28,7 +28,7 @@ and event =
     =============================================================================
     Values, Computation Expressions and Type Epxressions
     =============================================================================
-  *)
+*)
 
   and record_field_val' = Choreo.value' Choreo.named_param'
   
@@ -41,6 +41,28 @@ and event =
   and expr' = Choreo.expr'
 
   and expr = Choreo.expr
+
+
+(*
+    =============================================================================
+    User-Set Expressions
+    =============================================================================
+*)
+
+  and user_set_param_val' = user_set_param_val Choreo.annotated
+
+  and user_set_param_val =
+    | Expr of expr'
+    | Any
+
+    and userset_role_expr' = user_set_param_val' Choreo.parameterisable_role'
+
+    and user_set_expr' = user_set_expr Choreo.annotated
+  
+    and user_set_expr =
+      | RoleExpr of userset_role_expr'
+      | Initiator of Choreo.event_id'
+      | Receiver of Choreo.event_id'
 
   and relation =
     | ControlFlowRelation of
