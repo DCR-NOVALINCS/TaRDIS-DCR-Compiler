@@ -32,8 +32,6 @@ val cnf_sat_solve : cnf_formula -> cnf_formula option
 
 val cnf_all_sat_solve : cnf_formula -> cnf_formula list
 
-val cnf_entails : cnf_formula -> cnf_clause -> bool
-
 val cnf_and : cnf_formula -> cnf_formula -> cnf_formula
 
 val cnf_or : cnf_formula -> cnf_formula -> cnf_formula

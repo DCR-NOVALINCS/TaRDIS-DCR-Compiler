@@ -116,28 +116,12 @@ module Projection = struct
   open Choreo
 
   type program =
-    { events : event_t list
+    { events : event list
     ; relations : relation list
     }
+
   (* [example] local_binding : 'X' -> ('_@X0', _@trigger.initiator.cid) *)
-
-  (** A placeholder for information required both during the projection process
-      and for deriving the resulting endpoint event.
-
-      [event'] choreography event linked to this endpoint-event
-
-      [uid] the uid of the choreography [event'] (redundant, kept for
-      convenience)
-
-      [self] knowledge about the user observing this event's execution - as a
-      role succesively unifies with events, either as an initator or a receiver,
-      [self] accumulates implicit knowledge about the role which is subsequently
-      propagated to potential nested scopes (monotonically narrows the role
-      towards a user)
-      
-      [local_bindings] strictly expanding
-      *)
-  and event_t =
+  and event =
     { event' : Choreo.event'
     ; uid : identifier
     ; self : CnfRole.t
@@ -169,8 +153,8 @@ module Projection = struct
     | Initr of event_id
     | Rcvr of event_id
 
-  let rec unparse_events ?(indent = "") (events : event_t list) =
-    let rec unparse_event (e : event_t) =
+  let rec unparse_events ?(indent = "") (events : event list) =
+    let rec unparse_event (e : event) =
       (* TODO move next indent somewhere else later on - proper unparser *)
       let next_indent = indent ^ "  " in
       let rec unparse_info () =
@@ -186,7 +170,8 @@ module Projection = struct
           Printf.sprintf "[Local]\n%s%s" next_indent (CnfRole.to_string e.self)
         | Tx (receivers, rcv_set) ->
           Printf.sprintf
-            "[Tx]\n%s%s\n%s%s->  %s\n%s[Tx] @self -> %s"
+            "[Tx]\n%s%s\n%s%s->  %s\n\
+            %s[Tx] @self -> %s"
             next_indent
             (CnfRole.to_string e.self)
             next_indent
@@ -196,7 +181,8 @@ module Projection = struct
             (Frontend.Unparser.unparse_user_set_exprs rcv_set)
         | Rx (initiators, init_set) ->
           Printf.sprintf
-            "[Rx]\n%s%s\n%s%s->  %s\n%s[Rx] %s -> @self"
+            "[Rx]\n%s%s\n%s%s->  %s\n\
+            %s[Rx] %s -> @self"
             next_indent
             (unparse_participants initiators)
             next_indent
@@ -311,7 +297,7 @@ module TriggerCtxt : sig
   and scope =
     { self : CnfRole.t
     ; implicit_bindings : cnf_clause list
-    ; trigger_chain : (event_id * Projection.event_t) list
+    ; trigger_chain : (event_id * Projection.event) list
     ; trigger_symbols : string StringMap.t
     ; trigger_exprs_by_sym : expr' StringMap.t
     ; bindings : (string * expr') StringMap.t
@@ -329,7 +315,7 @@ module TriggerCtxt : sig
 
   val trigger_sym_of : expr' -> t -> t * string
 
-  val triggerer : event_id -> t -> Projection.event_t
+  val triggerer : event_id -> t -> Projection.event
 
   val trigger_exprs : t -> expr' StringMap.t
 
@@ -337,7 +323,7 @@ module TriggerCtxt : sig
 
   val receivers_of : event_id -> t -> CnfRole.t list
 
-  val begin_scope : Projection.event_t -> t -> t
+  val begin_scope : Projection.event -> t -> t
 
   val end_scope : t -> t
 end = struct
@@ -348,7 +334,7 @@ end = struct
   and scope =
     { self : CnfRole.t
     ; implicit_bindings : cnf_clause list
-    ; trigger_chain : (event_id * Projection.event_t) list
+    ; trigger_chain : (event_id * Projection.event) list
     ; trigger_symbols : string StringMap.t
     ; trigger_exprs_by_sym : expr' StringMap.t
     ; bindings : (string * expr') StringMap.t
@@ -437,7 +423,7 @@ end = struct
 
   let trigger_exprs (t : t) = (snd (peek t)).trigger_exprs_by_sym
 
-  let begin_scope (trigger : Projection.event_t) (t : t) : t =
+  let begin_scope (trigger : Projection.event) (t : t) : t =
     let enclosing_scope = snd @@ peek t
     and event_id = (fst trigger.event'.data.info.data).data in
     let self = trigger.self
@@ -643,6 +629,7 @@ end = struct
     in
     let role_ctxt = encode_param_ty named_param' role_ctxt in
     let param_name', value' = named_param'.data in
+    (* let param_ty = (Option.get !(value'.ty)).t_expr in *)
     let param_sym = Symbols.encode_param_name param_name'.data in
     match value'.data with
     | Any -> (trigger_ctxt, local_bindings, role_ctxt)
@@ -923,7 +910,7 @@ module ProjectionContext = struct
     ; projection : Projection.program list
     ; self : CnfRole.t list
     ; symbols_by_elem_uid : StringSet.t StringMap.t
-    ; projected_events_env : Projection.event_t list Env.t
+    ; projected_events_env : Projection.event list Env.t
     ; sourcing_rx_relations_by_uid :
         ((element_uid * event_id) * relation_type * CnfRole.t) list StringMap.t
           (* TODO deprecate *)
@@ -1103,7 +1090,7 @@ module ProjectionContext = struct
     Env.find_flat_opt trigger_expr ctxt.symbols_by_trigger_string_env *)
 
   let include_projected_event (event_id : identifier)
-      (projections : Projection.event_t list) (ctxt : t) =
+      (projections : Projection.event list) (ctxt : t) =
     let hd_projection = List.hd ctxt.projection in
     let events = projections @ hd_projection.events in
     let hd_projection = { hd_projection with events } in
@@ -1133,7 +1120,7 @@ module ProjectionContext = struct
     in
     { ctxt with control_flow_candidates_stack }
 
-  let begin_scope (trigger : Projection.event_t) (ctxt : t) =
+  let begin_scope (trigger : Projection.event) (ctxt : t) =
     (* whoami *)
     let self = trigger.self :: ctxt.self
     (* *)
@@ -1179,7 +1166,7 @@ end
 *)
 let rewrite_userset (bindings : expr' StringMap.t)
     (user_set_expr' : user_set_expr') =
-  (* (aux) rewrites a single user-set param *)
+  (* Rewrite a single user-set param *)
   let rewrite_user_set_param
       (user_set_param' : user_set_param_val' named_param') :
       user_set_param_val' named_param' =
@@ -1187,22 +1174,22 @@ let rewrite_userset (bindings : expr' StringMap.t)
       | Expr expr' as expr -> begin
         match expr'.data with
         | EventRef binding' ->
-          (* (reminder) EventRef reflects a binding in this context *)
+          (* reminder: EventRef reflects a binding in this context *)
           Expr (StringMap.find binding'.data bindings)
         | _ -> expr
       end
       | RuntimeValue binding_opt ->
-        (* (reminder) Option is guaranteed to be Some - syntax will eventually 
+        (* reminder: Option is guaranteed to be Some - syntax will eventually 
           be adjusted to prevent this redundancy - however, a binding introduced 
       on the rhs might not be used on the lhs - in that case, replace with Any *)
-        let sym = (Option.get binding_opt).data in
+        let binding = (Option.get binding_opt).data in
         Option.fold
-          (StringMap.find_opt sym bindings)
+          (StringMap.find_opt binding bindings)
           ~none:Any
           ~some:(fun expr' -> Expr expr')
+        (* Expr (StringMap.find binding bindings) *)
       | _ as other -> other
     in
-    (* actual update named-param's data *)
     let param_name', param_val' = user_set_param'.data in
     { user_set_param' with
       data =
@@ -1223,30 +1210,8 @@ let rewrite_userset (bindings : expr' StringMap.t)
           }
     }
 
-let extract_min_diff_constraint_set (initial_encoding : cnf_formula)
-    (final_encoding : cnf_formula) =
-  (* print_endline @@ Printf.sprintf "\n\nextract_min_diff_constraint_set \
-  called with\n  init= %s\n  final=%s"
-  (unparse_cnf_formula initial_encoding)
-  (unparse_cnf_formula final_encoding); *)
-  let new_constraints =
-    List.filter
-      (fun c1 -> not @@ List.exists (fun c2 -> c1 = c2) initial_encoding)
-      final_encoding
-    |> List.sort_uniq cnf_clause_compare
-  in
-  List.fold_left
-    (fun (base, acc) clause ->
-      (* print_endline @@ Printf.sprintf "base=%s  acc=%s  clause=%s"
-      (unparse_cnf_formula base)
-      (unparse_cnf_formula acc)
-      (unparse_cnf_formula [clause])
-      ; *)
-      if Sat.cnf_entails (base @ acc) clause then (base, acc)
-      else (base, clause :: acc))
-    (initial_encoding, [])
-    new_constraints
-  |> snd
+
+
 
 let rec project_spawn_program ctxt
     ({ events; relations } : Choreo.spawn_program) =
@@ -1256,8 +1221,7 @@ and project_events ctxt (events : Choreo.event' list) =
   (* *)
   let rec project (ctxt : ProjectionContext.t) (event' : Choreo.event')
       ~(self : CnfRole.t) ~(projection_type : projection_t)
-      ~(local_bindings : (string * expr') StringMap.t) : Projection.event_t list
-      =
+      ~(local_bindings : (string * expr') StringMap.t) : Projection.event list =
     let uid = Option.get !(event'.uid)
     and base_self = ProjectionContext.self ctxt in
 
@@ -1272,7 +1236,7 @@ and project_events ctxt (events : Choreo.event' list) =
       TriggerCtxt.trigger_exprs ctxt.ProjectionContext.trigger_ctxt
     in
     (* TODO revise - move constants *)
-    let (res : Projection.event_t list) =
+    let (res : Projection.event list) =
       begin
         match projection_type with
         | Local implicit_constraints ->
@@ -1299,16 +1263,14 @@ and project_events ctxt (events : Choreo.event' list) =
           ]
       end
       |> List.map
-           (fun (uid, implicit_bindings, communication) : Projection.event_t ->
+           (fun (uid, implicit_bindings, communication) : Projection.event ->
              (* reduce instantiation constraints to the new information, i.e., 
             whatever was not already encoded by the scope's @self *)
              let instantiation_constraints =
-               (* List.filter
+               List.filter
                  (fun c1 ->
                    not @@ List.exists (fun c2 -> c1 = c2) base_self.encoding)
                  self.encoding
-               |>  *)
-               extract_min_diff_constraint_set base_self.encoding self.encoding
                |> List.filter (fun c1 ->
                       not @@ List.exists (fun c2 -> c1 = c2) implicit_bindings)
                |> List.sort_uniq cnf_clause_compare
@@ -1321,10 +1283,6 @@ and project_events ctxt (events : Choreo.event' list) =
              @@ Printf.sprintf
                   "\n  call to project with self= %s\n"
                   (CnfRole.to_string self);
-             print_endline
-             @@ Printf.sprintf
-                  "\n  instantiation constraints= %s\n"
-                  (unparse_cnf_formula @@ instantiation_constraints);
              (* the (potentially more restricted) self to be propagated to 
              nested trigger scopes carries all constraints *)
              let self =
@@ -1366,27 +1324,25 @@ and project_events ctxt (events : Choreo.event' list) =
     in
 
     let trigger_ctxt = ctxt.ProjectionContext.trigger_ctxt in
+    let bindings = TriggerCtxt.bindings trigger_ctxt in
     let self = TriggerCtxt.self trigger_ctxt in
     let abstract_self = ctxt.abstract_self in
     let self_role = self.label
     and event_id = (fst event'.data.info.data).data in
-
-    (* debug *)
     print_endline
     @@ Printf.sprintf
          "\n\n\n    >>>> called with event_id=%s   self=%s\n\n"
          event_id
          (CnfRole.to_string self);
 
-    (* Tx/Rx events explicitly exclude @self from the "remote"-side *)
+    (* Tx/Rx events are forced to explicitly exclude self from the remote-side *)
     let exclude_abstract_self (roles : CnfUserset.t) : CnfUserset.t =
-      CnfUserset.exclude_role roles abstract_self
-      (* StringMap.find_opt self_role roles
+      StringMap.find_opt self_role roles
       |> fold_role ~none:None ~some:(fun role ->
              CnfRole.resolve_role_diff role abstract_self)
       |> function
       | None -> roles
-      | Some diff -> StringMap.add self_role diff roles *)
+      | Some diff -> StringMap.add self_role diff roles
     in
 
     let trigger_ctxt, communication_ctxt =
@@ -1398,10 +1354,16 @@ and project_events ctxt (events : Choreo.event' list) =
     (* debug *)
     print_endline @@ CommunicationCtxt.to_string communication_ctxt;
 
-    let { local_bindings; init_ctxt; rcv_ctxt; _ } : CommunicationCtxt.t =
+    let { local_bindings; init_ctxt; rcv_ctxt } : CommunicationCtxt.t =
       communication_ctxt
     in
 
+    (* let local_bindings =
+      StringMap.union
+        (fun _ v _ -> Some v)
+        (TriggerCtxt.bindings trigger_ctxt)
+        local_bindings
+    in *)
     let initrs, rcvrs =
       (derive_remote_participants init_ctxt, derive_remote_participants rcv_ctxt)
     in
@@ -1466,7 +1428,7 @@ and project_events ctxt (events : Choreo.event' list) =
         print_endline @@ Printf.sprintf "Role at both sides";
 
         (* partitioning of implicit constraints across tx and rx according
-          to whether they appear: on both sides, on tx-only, on rx-only
+            to whether they appear: on both sides, on tx-only, on rx-only
         *)
         let implicit_common, implicit_tx_only, implicit_rx_only =
           let tx, rx =
@@ -1516,42 +1478,15 @@ and project_events ctxt (events : Choreo.event' list) =
         print_endline
         @@ Printf.sprintf "tx is implicit user: %b\n" is_implicit_tx_user;
 
-        (* remote user sets as seen by @self, according to its role *)
-        let init_set, rcv_set =
-          (* Tx => @self leads local bindings; Rx => @self leads local bindings *)
-          let tx_lead_local_bindings, rx_lead_local_bindings =
-            let mapper =
-              StringMap.map (fun (x : RoleCtxt.binding_info) ->
-                  (x.renaming, x.local_bind_expr'))
-            in
-            (mapper tx_ctxt.defines, mapper rx_ctxt.uses)
+        (* Tx => @self leads local bindings; Rx => @self leads local bindings *)
+        let tx_lead_local_bindings, rx_lead_local_bindings =
+          let mapper =
+            StringMap.map (fun (x : RoleCtxt.binding_info) ->
+                (x.renaming, x.local_bind_expr'))
           in
-          (* debug *)
-          (* print_endline "\ntx_lead_local_bindings";
-          List.iter
-            (fun (_, (_, z)) ->
-              print_endline (Frontend.Unparser.unparse_expr z))
-            (StringMap.bindings tx_lead_local_bindings);
-          print_endline "\nrx_lead_local_bindings";
-          List.iter
-            (fun (_, (_, z)) ->
-              print_endline (Frontend.Unparser.unparse_expr z))
-            (StringMap.bindings rx_lead_local_bindings);
-          print_newline (); *)
-          (* rewrite remote user-set according to the bindings in scope *)
-          let derive_set local_bindings user_set_exprs =
-            List.map
-              (rewrite_userset
-                 (StringMap.union
-                    (fun _ _ y -> Some y)
-                    (TriggerCtxt.bindings trigger_ctxt)
-                    local_bindings
-                 |> StringMap.map (fun e -> snd e)))
-              user_set_exprs
-          in
-          ( derive_set rx_lead_local_bindings communication_ctxt.init_set
-          , derive_set tx_lead_local_bindings communication_ctxt.rcv_set )
+          (mapper tx_ctxt.defines, mapper rx_ctxt.uses)
         in
+        (* List.iter (fun (x,(y,z)) -> print_endline (Frontend.Unparser.unparse_expr z) ) (StringMap.bindings tx_lead_local_bindings); *)
 
         (* *)
         let tx_only_res =
@@ -1579,24 +1514,16 @@ and project_events ctxt (events : Choreo.event' list) =
                     CnfUserset.exclude_role rcvrs tx_self_role
                   else rcvrs
                 in
-                (* let self =
+                let self =
                   { self with
                     encoding =
                       List.sort
                         cnf_clause_compare
                         (cnf_and self.encoding tx_only_role.encoding)
                   }
-                in *)
-                let self =
-                  { self with
-                    encoding =
-                      Option.get
-                      @@ Sat.cnf_sat_solve
-                           (cnf_and self.encoding tx_only_role.encoding)
-                  }
                 in
 
-                (* List.iter
+                List.iter
                   (fun x ->
                     print_endline
                     @@ Printf.sprintf
@@ -1621,7 +1548,8 @@ and project_events ctxt (events : Choreo.event' list) =
                     @@ Printf.sprintf
                          "+++++++++++ rewriten rcv_set: %s"
                          (Frontend.Unparser.unparse_user_set_expr x))
-                  (deannotate_list rcv_set); *)
+                  (deannotate_list rcv_set);
+
                 let projection_type =
                   TxO
                     ( tx_ctxt.implicit_constraints
@@ -1645,21 +1573,23 @@ and project_events ctxt (events : Choreo.event' list) =
         (*  *)
         and rx_only_res =
           let project_rx_self rx_only_role =
-            (* print_endline
+            print_endline
             @@ Printf.sprintf "\nself: %s" (CnfRole.to_string self);
             print_endline
             @@ Printf.sprintf
                  "rx_only_self: %s\n"
-                 (CnfRole.to_string rx_only_role); *)
+                 (CnfRole.to_string rx_only_role);
             Option.fold
               (resolve_unify_self rx_only_role)
-              ~none:[]
+              ~none:
+                (print_endline "self does not unify with rx_only role";
+                 [])
               ~some:(fun (rx_self_role : CnfRole.t) ->
-                (* print_endline "self unifies with rx_only role";
+                print_endline "self unifies with rx_only role";
                 print_endline
                 @@ Printf.sprintf
                      "rx_self_role: %s"
-                     (CnfRole.to_string rx_self_role); *)
+                     (CnfRole.to_string rx_self_role);
                 let initrs =
                   if is_user rx_only_role then
                     (* @self = tx = user => TxO *)
@@ -1675,7 +1605,7 @@ and project_events ctxt (events : Choreo.event' list) =
                   }
                 in
 
-                (* let init_set =
+                let init_set =
                   List.map
                     (rewrite_userset
                        (StringMap.union
@@ -1692,7 +1622,8 @@ and project_events ctxt (events : Choreo.event' list) =
                     @@ Printf.sprintf
                          "+++++++++++ rewriten rcv_set: %s"
                          (Frontend.Unparser.unparse_user_set_expr x))
-                  (deannotate_list init_set); *)
+                  (deannotate_list init_set);
+
                 let projection_type =
                   RxO
                     ( rx_ctxt.implicit_constraints
@@ -1704,15 +1635,15 @@ and project_events ctxt (events : Choreo.event' list) =
           Option.fold
             (CnfRole.resolve_role_diff rx_ctxt.role tx_ctxt.role)
             ~none:
-              (if is_user rx_ctxt.role then
-                 (* print_endline "\nRxO with user on rx-side\n"; *)
-                 project_rx_self rx_ctxt.role
+              (if is_user rx_ctxt.role then (
+                 print_endline "\nRxO with user on rx-side\n";
+                 project_rx_self rx_ctxt.role)
                else [])
             ~some:(fun diff_role ->
-              (* print_endline
+              print_endline
               @@ Printf.sprintf
                    "\nrx_diff_role: %s"
-                   (CnfRole.to_string diff_role); *)
+                   (CnfRole.to_string diff_role);
               project_rx_self diff_role)
         (*  *)
         (*  *)
@@ -1808,20 +1739,12 @@ and project_events ctxt (events : Choreo.event' list) =
                     @@ Printf.sprintf
                          "rx_implicit_constraints: %s\n"
                          (unparse_cnf_formula rx_implicit_constraints); *)
-                    (* let self =
+                    let self =
                       { self with
                         encoding =
                           List.sort_uniq
                             cnf_clause_compare
                             (cnf_and self.encoding tx_rx_self_role.encoding)
-                      }
-                    in *)
-                    let self =
-                      { self with
-                        encoding =
-                          Option.get
-                          @@ Sat.cnf_sat_solve
-                               (cnf_and self.encoding tx_rx_self_role.encoding)
                       }
                     in
                     (* print_endline
@@ -1829,44 +1752,15 @@ and project_events ctxt (events : Choreo.event' list) =
                          "adjusted self %s"
                          (CnfRole.to_string self); *)
 
-                    (* List.iter
+                    List.iter
                       (fun x ->
                         print_endline
                         @@ Printf.sprintf
                              "+++++++++++ rewriten rcv_set: %s"
                              (Frontend.Unparser.unparse_user_set_expr x))
-                      (deannotate_list communication_ctxt.rcv_set); *)
+                      (deannotate_list communication_ctxt.rcv_set);
 
-                    (* let init_set, rcv_set =
-                      let derive_set local_bindings user_set_exprs =
-                        List.map
-                          (rewrite_userset
-                             (StringMap.union
-                                (fun _ _ y -> Some y)
-                                (TriggerCtxt.bindings trigger_ctxt)
-                                local_bindings
-                             |> StringMap.map (fun e -> snd e)))
-                          user_set_exprs
-                      in
-                      ( derive_set
-                          rx_lead_local_bindings
-                          communication_ctxt.init_set
-                      , derive_set
-                          tx_lead_local_bindings
-                          communication_ctxt.rcv_set )
-                    in *)
-
-                    (* in
-                    let init_set =
-                      List.map
-                        (rewrite_userset
-                           (StringMap.union
-                              (fun _ _ y -> Some y)
-                              (TriggerCtxt.bindings trigger_ctxt)
-                              rx_lead_local_bindings
-                           |> StringMap.map (fun e -> snd e)))
-                        communication_ctxt.init_set
-                    and rcv_set =
+                    let rcv_set =
                       List.map
                         (rewrite_userset
                            (StringMap.union
@@ -1875,45 +1769,56 @@ and project_events ctxt (events : Choreo.event' list) =
                               tx_lead_local_bindings
                            |> StringMap.map (fun e -> snd e)))
                         communication_ctxt.rcv_set
-                    in *)
+                    in
 
-                    (* List.iter
+                    List.iter
                       (fun x ->
                         print_endline
                         @@ Printf.sprintf
                              "+++++++++++ rewriten rcv_set: %s"
                              (Frontend.Unparser.unparse_user_set_expr x))
-                      (deannotate_list rcv_set); *)
-                    (* List.iter
-                      (fun x ->
-                        print_endline
-                        @@ Printf.sprintf
-                             "+++++++++++ rewriten rcv_set: %s"
-                             (Frontend.Unparser.unparse_user_set_expr x))
-                      (deannotate_list init_set); *)
+                      (deannotate_list rcv_set);
+
+                      let init_set =
+                        List.map
+                          (rewrite_userset
+                             (StringMap.union
+                                (fun _ _ y -> Some y)
+                                (TriggerCtxt.bindings trigger_ctxt)
+                                rx_lead_local_bindings
+                             |> StringMap.map (fun e -> snd e)))
+                          communication_ctxt.init_set
+                      in
+      
+                      List.iter
+                        (fun x ->
+                          print_endline
+                          @@ Printf.sprintf
+                               "+++++++++++ rewriten rcv_set: %s"
+                               (Frontend.Unparser.unparse_user_set_expr x))
+                        (deannotate_list init_set);
 
                     let projection_type =
                       TxRx
-                        ( ( tx_implicit_constraints
-                          , exclude_abstract_self rcvrs
-                          , rcv_set )
-                        , ( rx_implicit_constraints
-                          , exclude_abstract_self initrs
-                          , init_set ) )
+                        (* ( ( self_tx_ctxt.implicit_constraints *)
+                        ( (tx_implicit_constraints, exclude_abstract_self rcvrs, rcv_set)
+                          (* , ( self_rx_ctxt.implicit_constraints *)
+                        , (rx_implicit_constraints, exclude_abstract_self initrs, init_set)
+                        )
                     in
 
-                    let local_bindings =
-                      let nested_bindings =
-                        StringMap.map
-                          (fun (x : RoleCtxt.binding_info) ->
+                  
+                    let local_bindings = 
+                      let nested_bindings = 
+                        StringMap.map (fun (x : RoleCtxt.binding_info) ->
                             (x.renaming, x.spawn_bind_expr'))
-                          tx_ctxt.defines
-                      in
+                            tx_ctxt.defines
+                        in
                       StringMap.union
-                        (fun _ _ y -> Some y)
-                        (TriggerCtxt.bindings trigger_ctxt)
-                        nested_bindings
-                    in
+                    (fun _ _ y -> Some y)
+                    (TriggerCtxt.bindings trigger_ctxt)
+                    nested_bindings in
+
 
                     project ctxt event' ~self ~projection_type ~local_bindings)))
         in
@@ -1921,42 +1826,10 @@ and project_events ctxt (events : Choreo.event' list) =
         let projections = tx_only_res @ tx_rx_res @ rx_only_res in
 
         ProjectionContext.include_projected_event event_id projections ctxt
-      | Some tx_ctxt, None ->
+      | Some _, None ->
         (* handle Local vs TxO *)
-        (* TODO provide role_ctxt to project as arg *)
-        (* let self = (remove_implicit_ implicit_bindings tx_ctxt).role in *)
-        (* let self = remove_implicit_ scope_implicit_constraints tx_ctxt.role in *)
-        (* let implicit_bindings = tx_ctxt.implicit_constraints in *)
-        let rcv_set =
-          List.map
-            (rewrite_userset
-               (TriggerCtxt.bindings trigger_ctxt
-               |> StringMap.map (fun e -> snd e)))
-            communication_ctxt.rcv_set
-        in
-        let projection_type =
-          if StringMap.is_empty rcv_ctxt then Local tx_ctxt.implicit_constraints
-          else TxO (tx_ctxt.implicit_constraints, rcvrs, rcv_set)
-        in
-        let projections =
-          project ctxt event' ~self ~local_bindings ~projection_type
-        in
-        ProjectionContext.include_projected_event event_id projections ctxt
-      | None, Some rx_ctxt ->
-        let init_set =
-          List.map
-            (rewrite_userset
-               (TriggerCtxt.bindings trigger_ctxt
-               |> StringMap.map (fun e -> snd e)))
-            communication_ctxt.init_set
-        in
-        let projection_type =
-          RxO (rx_ctxt.implicit_constraints, initrs, init_set)
-        in
-        let rx_event =
-          project ctxt event' ~self ~projection_type ~local_bindings
-        in
-        ProjectionContext.include_projected_event event_id rx_event ctxt
+        ctxt
+      | None, Some _ -> ctxt
       | None, None -> ctxt
     in
 
@@ -2454,7 +2327,7 @@ and project_relations (ctxt : ProjectionContext.t)
       (* delay ctrl-flow relations until all spawn relations are projected, and
          on the recursion's way up *)
       Ok ctxt
-    | Choreo.SpawnRelation (src_id', _, _expr', spawn_program) -> begin
+    | Choreo.SpawnRelation (src_id', _,  _expr', spawn_program) -> begin
       (* TODO include guard in relations *)
       let src = Env.find_flat_opt src_id'.data ctxt.projected_events_env in
       (* reminder: depending on the role, we might not have a projection for
@@ -2486,7 +2359,7 @@ and project_relations (ctxt : ProjectionContext.t)
          to events (no point in attaching guards to spawns for the same purpose);
          nonetheless, it's required for duals *)
       fold_left_error
-        (fun (ctxt : ProjectionContext.t) (event : Projection.event_t) ->
+        (fun (ctxt : ProjectionContext.t) (event : Projection.event) ->
           let ctxt = ProjectionContext.begin_scope event ctxt in
           project_spawn_program ctxt spawn_program
           >>= fun (ctxt : ProjectionContext.t) ->
@@ -2518,7 +2391,7 @@ and project_relations (ctxt : ProjectionContext.t)
              constraint deciding the instantiation of the relation *)
           let candidates =
             list_combine
-              (fun (e1 : Projection.event_t) (e2 : Projection.event_t) ->
+              (fun (e1 : Projection.event) (e2 : Projection.event) ->
                 Option.bind
                   (CnfRole.resolve_role_intersection e1.self e2.self)
                   (fun self -> Some (e1, e2, self)))
@@ -2531,7 +2404,7 @@ and project_relations (ctxt : ProjectionContext.t)
           *)
           let init_init, rx_init, x_rcv =
             List.partition
-              (fun (_, (e2 : Projection.event_t), _) ->
+              (fun (_, (e2 : Projection.event), _) ->
                 match e2.communication with
                 | Local | Tx _ -> true
                 | Rx _ -> false)
@@ -2539,7 +2412,7 @@ and project_relations (ctxt : ProjectionContext.t)
             |> fun (x_init, x_rcv) ->
             let init_init, rx_init =
               List.partition
-                (fun ((e1 : Projection.event_t), _, _) ->
+                (fun ((e1 : Projection.event), _, _) ->
                   match e1.communication with
                   | Local | Tx _ -> true
                   | Rx _ -> false)
@@ -2552,7 +2425,7 @@ and project_relations (ctxt : ProjectionContext.t)
           let ctxt, _ =
             List.fold_left_map
               (fun ctxt
-                   ((e1 : Projection.event_t), (e2 : Projection.event_t), self)
+                   ((e1 : Projection.event), (e2 : Projection.event), self)
                  ->
                 let rel =
                   Projection.ControlFlowRelation
@@ -2571,7 +2444,7 @@ and project_relations (ctxt : ProjectionContext.t)
           let ctxt, _ =
             List.fold_left_map
               (fun ctxt
-                   ((e1 : Projection.event_t), (e2 : Projection.event_t), self)
+                   ((e1 : Projection.event), (e2 : Projection.event), self)
                  ->
                 let src_uid = e1.uid
                 and target_info =
@@ -2591,7 +2464,7 @@ and project_relations (ctxt : ProjectionContext.t)
           let acc =
             List.fold_left
               (fun acc
-                   ((e1 : Projection.event_t), (e2 : Projection.event_t), self)
+                   ((e1 : Projection.event), (e2 : Projection.event), self)
                  ->
                 let rel =
                   Projection.ControlFlowRelation
