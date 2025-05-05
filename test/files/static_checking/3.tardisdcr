@@ -17,18 +17,23 @@ A flows L0
 L0 flows L1
 L1 flows L2
 ;
-(b:B) (L1(lid:'ola'; v: 'ola')) ['ola'] [A]
+(b:B) (L1(lid:'a1'; v: 'ola')) ['ola'] [A]
 (spawn:Y) (L0) [?:{v: String }]  [A] 
 ;
 spawn -->> {
-    (yinfo:info)(L1(lid:'ola'; v:b.value))[{id= @trigger.value.v}][A]
-    (spawn2:create)(L1(lid:'ola'; v:b.value))[?:{cid:String}][A] 
+    (yinfo:info)(L1(lid:'a1'; v:b.value))[{id= @trigger.value.v}][A]
+    (dummy:dummy)(L1(lid:'adeus'; v:'ola'))['hduasd'][A] //error [[@trigger#spawn2.value.cid = 'hduasd']] mas == 4
+    //(x2:x2)(L1(lid:@trigger.value.v; v:b.value))[{id= @trigger.value.cid}][A] //[[(@trigger#spawn2.value.cid = ola)]]
+    (spawn2:create)(L1(lid:'a1'; v:b.value))[?:{cid:String}][A] 
     ;
     spawn2 -->> {
-        (spawn3:new)(L1(lid: @trigger.value.cid ; v: 'ola'))[@trigger.value.cid][A] 
+        (spawn3:new)(L1(lid:@trigger.value.cid ; v: 'ola'))[dummy.value ][A] //[[(@trigger#spawn2.value.cid = ola)]]
+        // check trigger -> @trigger#spawn2.value.cid = 'a1' -> spawn2
+        // check param -> @trigger#spawn2.value.cid = 'a1' -> spawn3 -> 
+        //(spawn3:new)(L1(lid:'4'; v: 'ola'))[x2.value ][A]
         ;
         spawn3 -->> {
-            (d:d)(L1(lid:@trigger.value; v: 'ola'))[?][A] 
+            (d:d)(L1(lid:@trigger.value; v: 'ola'))[?][A] //[[(@trigger#spawn2.value.cid = 5)]]
             
         }
     }
