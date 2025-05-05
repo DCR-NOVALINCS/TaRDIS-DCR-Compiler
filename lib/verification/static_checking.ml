@@ -354,7 +354,8 @@ end = struct
 
   let reset_references ctxt =
     global_label_SC := TreeMap.empty;
-    Ok (CnfExprCtxt.return_constainsts ctxt.symbolic)
+    let new_expr_map = CnfExprCtxt.return_constainsts ctxt.symbolic in
+    Ok TreeMap.empty
 
   let begin_scope trigger ctxt =
     { env = Env.begin_scope ctxt.env
