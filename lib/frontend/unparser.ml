@@ -200,12 +200,14 @@ and unparse_user_set_param param' =
     | None -> Printf.sprintf "#%s" name'.data
   end
 
+and unparse_role_expr' role_expr' =
+  let role', params = role_expr'.data in
+  List.map unparse_user_set_param params
+  |> String.concat "; "
+  |> Printf.sprintf "%s(%s)" role'.data
+
 and unparse_user_set_expr = function
-  | RoleExpr role_expr' ->
-    let role', params = role_expr'.data in
-    List.map unparse_user_set_param params
-    |> String.concat "; "
-    |> Printf.sprintf "%s(%s)" role'.data
+  | RoleExpr role_expr' -> unparse_role_expr' role_expr'
   | Initiator event_id' -> Printf.sprintf "@Initiator(%s)" event_id'.data
   | Receiver event_id' -> Printf.sprintf "@Receiver(%s)" event_id'.data
 
@@ -221,7 +223,8 @@ and unparse_event_participants participants' =
     |> String.concat ", "
     |> Printf.sprintf "%s -> %s" (unparse_user_set_expr initiator'.data)
 
-and unparse_event_marking_extended { is_pending'; is_included'; default_val_opt } =
+and unparse_event_marking_extended
+    { is_pending'; is_included'; default_val_opt } =
   let default_val =
     Option.fold default_val_opt ~none:String.empty ~some:(fun value' ->
         unparse_value' value')

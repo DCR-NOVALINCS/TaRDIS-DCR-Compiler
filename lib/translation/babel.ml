@@ -27,17 +27,13 @@ and encode_value (value : value) =
     `Assoc [ ("fields", `List (List.rev lst)) ] |> fun rec_val ->
     `Assoc [ ("recordVal", rec_val) ]
 
-and encode_type_expr' (type_expr' : Choreo.type_expr') : string * Basic.t =
-  encode_type_expr type_expr'.data
-
-and encode_type_expr (type_expr : Choreo.type_expr) : string * Basic.t =
+and encode_type_expr (type_expr : Choreo.type_expr) : Basic.t =
   match type_expr with
-  | Choreo.UnitTy -> ("valueType", `String "void")
-  | Choreo.BoolTy -> ("valueType", `String "bool")
-  | Choreo.IntTy -> ("valueType", `String "int")
-  | Choreo.StringTy -> ("valueType", `String "string")
-  | Choreo.EventRefTy (label, _) | Choreo.EventTy label ->
-    ("eventType", `Assoc [ ("label", `String label) ])
+  | Choreo.UnitTy -> `Assoc [ ("valueType", `String "void") ]
+  | Choreo.BoolTy -> `Assoc [ ("valueType", `String "bool") ]
+  | Choreo.IntTy -> `Assoc [ ("valueType", `String "int") ]
+  | Choreo.StringTy -> `Assoc [ ("valueType", `String "string") ]
+  | Choreo.EventRefTy (label, _) -> `Assoc [ ("label", `String label) ]
   | Choreo.RecordTy ty_fields ->
     List.fold_left
       (fun (assoc_list : Basic.t list)
@@ -45,14 +41,21 @@ and encode_type_expr (type_expr : Choreo.type_expr) : string * Basic.t =
          ->
         `Assoc
           [ ("name", `String name'.data)
-          ; ("type", `Assoc [ encode_type_expr type_expr'.data ])
+          ; ("type", encode_type_expr' type_expr')
           ]
         :: assoc_list)
       []
       (Choreo.deannotate_list ty_fields)
     |> fun (type_fields : Basic.t list) ->
-    ("recordType", `Assoc [ ("fields", `List type_fields) ])
+    `Assoc [ ("recordType", `Assoc [ ("fields", `List type_fields) ]) ]
   | _ -> assert false
+
+and encode_type_expr' (type_expr' : Choreo.type_expr') : Basic.t =
+  match type_expr'.data with
+  | Choreo.EventTy _ ->
+    let ty = (Option.get !(type_expr'.ty)).t_expr in
+    `Assoc [ ("eventType", encode_type_expr ty) ]
+  | _ -> encode_type_expr type_expr'.data
 
 and encode_expr' (expr' : expr') = encode_expr expr'.data
 
@@ -130,54 +133,38 @@ and encode_expr (expr : expr) =
     end
   | _ -> assert false
 
+and encode_data_expr' (data_expr' : Choreo.data_expr') =
+  encode_data_expr data_expr'.data
+
+and encode_data_expr (data_expr : Choreo.data_expr) : Basic.t =
+  match data_expr with
+  | Choreo.Input type_expr' -> encode_type_expr' type_expr'
+  | Choreo.Computation expr' -> encode_expr' expr'
+
 and encode_user_set_expr' (user_set_expr' : user_set_expr') =
   encode_user_set_expr user_set_expr'.data
 
-and encode_user_set_expr (user_set_expr : user_set_expr) =
-    match user_set_expr with
-    | RoleExpr { data = role', params; _ } ->
-      let roleLabel = ("roleLabel", `String role'.data) in
-      List.map
-        (fun ({ data = name', value'; _ } :
-               user_set_param_val' Choreo.named_param')
-           ->
-          let name = ("name", `String name'.data) in
-          match value'.data with
-          | Any -> `Assoc [ name ]
-          | Expr expr' -> `Assoc [ name; ("value", encode_expr' expr') ])
-        params
-      |> fun (params : Basic.t list) ->
-      `Assoc [ ("roleExpr", `Assoc [ roleLabel; ("params", `List params) ]) ]
-    | Initiator event_id' ->
-      `Assoc [ ("initiatorExpr", `Assoc [("eventId",`String event_id'.data)]) ]
-    | Receiver event_id' -> `Assoc [ ("receiverExpr", `Assoc [("eventId",`String event_id'.data)]) ]
-  
+and encode_user_set_expr (user_set_expr : user_set_expr) : Basic.t =
+  match user_set_expr with
+  | RoleExpr { data = role', params; _ } ->
+    let roleLabel = ("roleLabel", `String role'.data) in
+    List.map
+      (fun ({ data = name', value'; _ } :
+             user_set_param_val' Choreo.named_param')
+         ->
+        let name = ("name", `String name'.data) in
+        match value'.data with
+        | Any -> `Assoc [ name ]
+        | Expr expr' -> `Assoc [ name; ("value", encode_expr' expr') ])
+      params
+    |> fun (params : Basic.t list) ->
+    `Assoc [ ("roleExpr", `Assoc [ roleLabel; ("params", `List params) ]) ]
+  | Initiator event_id' ->
+    `Assoc [ ("initiatorExpr", `Assoc [ ("eventId", `String event_id'.data) ]) ]
+  | Receiver event_id' ->
+    `Assoc [ ("receiverExpr", `Assoc [ ("eventId", `String event_id'.data) ]) ]
 
-let encode_data_expr (data_expr : Choreo.data_expr) : Basic.t =
-  match data_expr with
-  | Choreo.Input type_expr' ->
-    `Assoc [ ("type_expr", `Assoc [ encode_type_expr type_expr'.data ]) ]
-  | Choreo.Computation _expr' -> assert false
-
-let encode_event ~(uid : string) ~(id : string) : Basic.t =
-  `Assoc [ ("uid", `String uid); ("id", `String id) ]
-
-let encode_events (events : event list) : Basic.t =
-  List.fold_left
-    (fun (acc : Basic.t list) event ->
-      let uid = ("uid", `String event.uid)
-      and id = ("id", `String event.id)
-      and data_expr = ("data_expr", encode_data_expr event.data_expr) in
-      `Assoc [ uid; id; data_expr ] :: acc)
-    []
-    events
-  |> fun lst -> `Assoc [ ("events", `List lst) ]
-
-let encode_endpoint_process (endpoint_process : endpoint) =
-  let { events; relations } = endpoint_process in
-  print_endline @@ Yojson.Basic.pretty_to_string @@ encode_events events
-
-let encode_marking ({ is_pending'; is_included'; default_val_opt } : marking) :
+and encode_marking ({ is_pending'; is_included'; default_val_opt } : marking) :
     Basic.t =
   let is_pending = ("isPending", `Bool is_pending'.data)
   and is_included = ("isIncluded", `Bool is_included'.data) in
@@ -190,6 +177,75 @@ let encode_marking ({ is_pending'; is_included'; default_val_opt } : marking) :
         (List.rev
         @@ ("defaultValue", encode_value' default_val')
            :: List.rev base_marking))
+
+and encode_instantiation_constraint' (expr' : expr') : Basic.t =
+  encode_instantiation_constraint expr'.data
+
+and encode_instantiation_constraint (expr : expr) : Basic.t =
+  `Assoc [ ("instantiationConstraint", encode_expr expr) ]
+
+and encode_ifc_constraint' (expr' : expr') : Basic.t =
+  encode_instantiation_constraint expr'.data
+
+and encode_ifc_constraint (expr : expr) : Basic.t =
+  `Assoc [ ("ifcConstraint", encode_expr expr) ]
+
+let encode_event (event : event) : Basic.t =
+  let uid = ("uid", `String event.uid)
+  and id = ("id", `String event.id)
+  and label = ("label", `String event.id)
+  and data_type =
+    ("dataType", encode_type_expr @@ (Option.get !(event.data_expr'.ty)).t_expr)
+  and marking = ("marking", encode_marking event.marking) in
+  let common =
+    ([] : (string * Basic.t) list) |> fun (common : (string * Basic.t) list) ->
+    Option.fold event.ifc_constraint' ~none:common ~some:(fun x ->
+        ("ifcConstraint", encode_expr' x) :: common)
+    |> fun (common : (string * Basic.t) list) ->
+    Option.fold event.instantiation_constraint' ~none:common ~some:(fun x ->
+        ("instantiationConstraint", encode_expr' x) :: common)
+    |> fun common ->
+    uid :: id :: label :: data_type :: marking :: common |> fun common ->
+    ("common", `Assoc common)
+  in
+  match event.data_expr'.data with
+  | Input _ -> begin
+    match event.communication with
+    | Local -> `Assoc [ ("inputEvent", `Assoc [ common ]) ]
+    | Tx user_sets ->
+      let rcvrs =
+        List.map encode_user_set_expr' user_sets |> fun rcvrs ->
+        ("receivers", `List rcvrs)
+      in
+      `Assoc [ ("inputEvent", `Assoc [ common; rcvrs ]) ]
+    | Rx user_set ->
+      let initrs =
+        encode_user_set_expr' user_set |> fun initrs -> ("initiators", initrs)
+      in
+      `Assoc [ ("receiveEvent", `Assoc [ common; initrs ]) ]
+  end
+  | Computation expr' -> (
+    let expr = ("dataExpr", encode_expr' expr') in
+    match event.communication with
+    | Local -> `Assoc [ ("computationEvent", `Assoc [ common; expr ]) ]
+    | Tx user_sets ->
+      let rcvrs =
+        List.map encode_user_set_expr' user_sets |> fun rcvrs ->
+        ("receivers", `List rcvrs)
+      in
+      `Assoc [ ("computationEvent", `Assoc [ common; expr; rcvrs ]) ]
+    | Rx user_set ->
+      let initrs =
+        encode_user_set_expr' user_set |> fun initrs -> ("initiators", initrs)
+      in
+      `Assoc [ ("receiveEvent", `Assoc [ common; expr; initrs ]) ])
+
+let encode_events (events : event list) : Basic.t =
+  List.map encode_event events |> fun lst -> `Assoc [ ("events", `List lst) ]
+
+let encode_endpoint_process (endpoint_process : endpoint) =
+  let { events; relations } = endpoint_process in
+  print_endline @@ Yojson.Basic.pretty_to_string @@ encode_events events
 
 (* {"p3": "a_string"; "p4": {"p5": {"p1": true; "p2": 3}} } *)
 let test_record_val () =
@@ -222,22 +278,37 @@ let test_markings () =
 
 let test_type_exprs () =
   let open Choreo in
-  let plain_int_ty' = annotate IntTy
-  and plain_void_ty' = annotate UnitTy
-  and string_ty_field' = annotate (annotate "p1", annotate StringTy)
-  and bool_ty_field' = annotate (annotate "p2", annotate BoolTy) in
+  let unit_ty = Some { t_expr = UnitTy; is_const = true }
+  and bool_ty = Some { t_expr = BoolTy; is_const = true }
+  and int_ty = Some { t_expr = IntTy; is_const = true }
+  and string_ty = Some { t_expr = StringTy; is_const = true }
+  and ref_ty = Some { t_expr = EventRefTy ("E0", true); is_const = true } in
+
+  let plain_int_ty' = annotate ~ty:int_ty IntTy
+  and plain_void_ty' = annotate ~ty:unit_ty UnitTy
+  and bool_ty_field' = annotate (annotate "p1", annotate ~ty:bool_ty BoolTy)
+  and string_ty_field' =
+    annotate (annotate "p2", annotate ~ty:string_ty StringTy)
+  and ref_ty_field' =
+    annotate (annotate "p4", annotate ~ty:ref_ty (EventTy "E1"))
+  in
+  let rec_ty =
+    Some
+      { t_expr = RecordTy [ string_ty_field'; bool_ty_field' ]
+      ; is_const = true
+      }
+  in
   let nested_rec_ty_field' =
     annotate
-      (annotate "p3", annotate (RecordTy [ string_ty_field'; bool_ty_field' ]))
+      ( annotate "p3"
+      , annotate ~ty:rec_ty (RecordTy [ string_ty_field'; bool_ty_field' ]) )
   in
-  let plain_ref_ty' = annotate (annotate "pp4", annotate (EventTy "E0")) in
-  let rec_ty = annotate (RecordTy [ plain_ref_ty'; nested_rec_ty_field' ]) in
+  let rec_ty = annotate (RecordTy [ ref_ty_field'; nested_rec_ty_field' ]) in
   print_endline @@ Yojson.Basic.pretty_to_string
-  @@ `Assoc [ encode_type_expr' plain_int_ty' ];
+  @@ encode_type_expr' plain_int_ty';
   print_endline @@ Yojson.Basic.pretty_to_string
-  @@ `Assoc [ encode_type_expr' plain_void_ty' ];
-  print_endline @@ Yojson.Basic.pretty_to_string
-  @@ `Assoc [ encode_type_expr' rec_ty ]
+  @@ encode_type_expr' plain_void_ty';
+  print_endline @@ Yojson.Basic.pretty_to_string @@ encode_type_expr' rec_ty
 
 let test_computations_exprs () =
   let open Choreo in
@@ -286,5 +357,148 @@ let test_user_set_exprs () =
          (annotate (annotate "P", [ role_expr_param_p1; role_expr_param_p2 ])))
   in
   let receiver_expr' = annotate (Receiver (annotate "e0")) in
-  print_endline @@ Yojson.Basic.pretty_to_string @@ encode_user_set_expr' role_expr';
-  print_endline @@ Yojson.Basic.pretty_to_string @@ encode_user_set_expr' receiver_expr'
+  print_endline @@ Yojson.Basic.pretty_to_string
+  @@ encode_user_set_expr' role_expr';
+  print_endline @@ Yojson.Basic.pretty_to_string
+  @@ encode_user_set_expr' receiver_expr'
+
+let test_computation_event () =
+  let annotate = Choreo.annotate
+  and (ty : Choreo.type_info option) =
+    Some { t_expr = BoolTy; is_const = true }
+  in
+  let uid = "e0_0_tx"
+  and id = "e0"
+  and label = "E0"
+  and data_expr' =
+    let computation = annotate ~ty Choreo.True in
+    annotate ~ty (Choreo.Computation computation)
+  and (marking : Choreo.event_marking) =
+    let is_pending' = annotate false
+    and is_included' = annotate true
+    and default_val_opt = Some (annotate ~ty (Choreo.BoolVal true)) in
+    { is_pending'; is_included'; default_val_opt }
+  (* and instantiation_constraint' = annotate ~ty Choreo.True  *)
+  and ifc_constraint' = Some (annotate ~ty Choreo.True)
+  and communication =
+    let receivers =
+      let role_expr_param_p1 = annotate (annotate "p1", annotate Any)
+      and role_expr_param_p2 =
+        annotate (annotate "p2", annotate (Expr (annotate (Choreo.IntLit 2))))
+      in
+      let role_expr' =
+        annotate
+          (RoleExpr
+             (annotate
+                (annotate "P", [ role_expr_param_p1; role_expr_param_p2 ])))
+      in
+      [ role_expr' ]
+    in
+    Tx receivers
+  in
+  let endpoint =
+    { uid
+    ; id
+    ; label
+    ; data_expr'
+    ; marking
+    ; instantiation_constraint' = None
+    ; ifc_constraint'
+    ; communication
+    }
+  in
+  print_endline @@ Yojson.Basic.pretty_to_string @@ encode_events [ endpoint ]
+
+let test_input_event () =
+  let annotate = Choreo.annotate
+  and (ty : Choreo.type_info option) =
+    Some { t_expr = BoolTy; is_const = true }
+  in
+  let uid = "e0_0_tx"
+  and id = "e0"
+  and label = "E0"
+  and data_expr' =
+    let input = annotate ~ty Choreo.BoolTy in
+    annotate ~ty (Choreo.Input input)
+  and (marking : Choreo.event_marking) =
+    let is_pending' = annotate false
+    and is_included' = annotate true
+    and default_val_opt = Some (annotate ~ty (Choreo.BoolVal true)) in
+    { is_pending'; is_included'; default_val_opt }
+  and instantiation_constraint' = Some (annotate ~ty Choreo.True)
+  and ifc_constraint' = Some (annotate ~ty Choreo.True)
+  and communication =
+    let receivers =
+      let role_expr_param_p1 = annotate (annotate "p1", annotate Any)
+      and role_expr_param_p2 =
+        annotate (annotate "p2", annotate (Expr (annotate (Choreo.IntLit 2))))
+      in
+      let role_expr' =
+        annotate
+          (RoleExpr
+             (annotate
+                (annotate "P", [ role_expr_param_p1; role_expr_param_p2 ])))
+      in
+      [ role_expr' ]
+    in
+    Tx receivers
+  in
+  let endpoint =
+    { uid
+    ; id
+    ; label
+    ; data_expr'
+    ; marking
+    ; instantiation_constraint'
+    ; ifc_constraint'
+    ; communication
+    }
+  in
+  print_endline @@ Yojson.Basic.pretty_to_string @@ encode_events [ endpoint ]
+
+let test_receive_event () =
+  let annotate = Choreo.annotate
+  and (ty : Choreo.type_info option) =
+    Some { t_expr = BoolTy; is_const = true }
+  in
+  let uid = "e0_0_tx"
+  and id = "e0"
+  and label = "E0"
+  and data_expr' =
+    let input = annotate ~ty Choreo.BoolTy in
+    annotate ~ty (Choreo.Input input)
+  and (marking : Choreo.event_marking) =
+    let is_pending' = annotate false
+    and is_included' = annotate true
+    and default_val_opt = Some (annotate ~ty (Choreo.BoolVal true)) in
+    { is_pending'; is_included'; default_val_opt }
+  and instantiation_constraint' = Some (annotate ~ty Choreo.True)
+  and ifc_constraint' = None
+  and communication =
+    let initiators =
+      let role_expr_param_p1 = annotate (annotate "p1", annotate Any)
+      and role_expr_param_p2 =
+        annotate (annotate "p2", annotate (Expr (annotate (Choreo.IntLit 2))))
+      in
+      let role_expr' =
+        annotate
+          (RoleExpr
+             (annotate
+                (annotate "P", [ role_expr_param_p1; role_expr_param_p2 ])))
+      in
+      role_expr'
+    in
+    Rx initiators
+  in
+  let endpoint =
+    { uid
+    ; id
+    ; label
+    ; data_expr'
+    ; marking
+    ; instantiation_constraint'
+    ; ifc_constraint'
+    ; communication
+    }
+  in
+  print_endline @@ Yojson.Basic.pretty_to_string @@ encode_events [ endpoint ]
