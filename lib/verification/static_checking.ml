@@ -283,7 +283,7 @@ end = struct
         , "Error in cnf sat solve: expression is unsat: "
           ^ unparse_cnf_formula new_cnf )
     | Some solver_cnf ->
-      print_endline @@ "Solver cnf: " ^ unparse_cnf_formula solver_cnf;
+      (* print_endline @@ "Solver cnf: " ^ unparse_cnf_formula solver_cnf; *)
       let aux =
         { symbolic_env = ctxt.symbolic_env
         ; contraints = TreeMap.add uuid solver_cnf ctxt.contraints
@@ -295,7 +295,7 @@ end = struct
       Ok aux
 
   let return_constainsts ctxt =
-    debug_contraints ctxt;
+    (* debug_contraints ctxt; *)
     ctxt.expr_map
 
   let update_expr'_env (uuid : string) (expr : expr') ctxt =
@@ -324,7 +324,7 @@ module Ctxt : sig
 
   val bind : role_label -> node -> t -> t
 
-  val reset_references : t -> (expr list list TreeMap.t, 'b) result
+  val reset_references : t -> (expr' TreeMap.t, 'b) result
 
   val get_trigger : t -> string
 
@@ -381,7 +381,7 @@ end = struct
       | Some uuid -> begin
         match CnfExprCtxt.update_cnf_formula uuid cnf ctxt.symbolic with
         | Error e ->
-          print_endline @@ "Aqui";
+          (* print_endline @@ "Aqui"; *)
           Error
             (( loc
              , "Error while adding dynamic flag in CnfExprCtxt: "
