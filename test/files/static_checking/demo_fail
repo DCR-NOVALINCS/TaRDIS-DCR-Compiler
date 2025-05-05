@@ -1,0 +1,138 @@
+
+// security labels / parametrised roles
+CO(cid:Integer)
+P(id:String; cid:Integer)
+Public
+;
+// security lattice / information flow 
+//implicitly bot -> public 
+// bot -> public 
+// bot -> p
+// bot -> CO
+Public flows Public
+;
+
+// (e0:E0) (Public) [?:{id:String}] [Public]
+// (e1:E1) (Public) [e0] [Public]
+// (e2:E2) (Public) [e0.value] [Public]
+// (e3:E3) (Public) [e0.value.id] [Public]
+
+
+// (e1:E1) (Public) [?:E5]
+// (e2:E2) (Public) [{a:5; b:e1}]    b:(E1, false)
+// e2 -->> [
+
+//   (e3:E3) (Public) [@trigger.value.a]
+// ]
+// (e5:E5) (Public) [3]    
+
+
+
+// base case extended with spawn
+// (e0:E0) (Public) [?] [CO(cid=0) -> P(id=*; cid=0)]
+// ;
+// e0 -->> {
+//   (e1:E1) (Public) [?] [P(id='p1'; cid=0) -> P(id=*; cid=0)]
+// }
+
+// base case extended with spawn + trigger
+// (e0:E0) (Public) [?:String] [CO(cid=0) -> P(id=*; cid=0)]
+// ;
+// e0 -->> {
+//   (e1:E1) (Public) [?] [P(id=@trigger.value; cid=0) -> P(id=*; cid=0), CO(cid=0)]
+// }
+
+
+(e0:E0) (Public) [?:String] [CO(cid=0) -> P(#id; cid=0)]
+;
+e0 -->> {
+  (e1:E1) (Public) [?] [P(id=@trigger.value; cid=0) -> P(id=*; cid=0), CO(cid=0)]
+}
+
+// introducing Initiator expr
+// (e0:E0) (Public) [?:String] [CO(cid=0) -> P(id=*; cid=0)]
+// ;
+// e0 -->> {
+//   (e1:E1) (Public) [?] [@Initiator(e0) -> P(id=*; cid=0)]
+// }
+
+// introducing Receiver expr
+// request
+// (e0:E0) (Public) [?] [CO(cid=0) -> P(id=*; cid=0)]
+// ;
+// e0 -->> {
+//   // reply
+//   (e1:E1) (Public) [?] [@Receiver(e0) -> P(id=*; cid=0)]
+// }
+
+
+// (e0:E0) (Public) [?] [CO(cid=0) -> P(id=*; cid=0)]
+// ;
+// e0 -->> {
+//   (e1:E1) (Public) [?] [@Receiver(e0) -> P(id=*; cid=0)]
+// }
+
+// accumulating roles in Receiver
+// (e0:E0) (Public) [?:String] [CO(cid=0) -> P(id=*; cid=0), CO(cid=1)]
+// ;
+// e0 -->> {
+//   (e1:E1) (Public) [?] [@Receiver(e0) -> P(id=*; cid=0)]
+// }
+
+// base case extended with spawn + trigger and nested spawn with "consume-like" combo
+// (e0:E0) (Public) [?:String] [CO(cid=0) -> P(id=*; cid=0)]
+// ;
+// e0 -->> {
+//   (e1:E1) (Public) [?] [P(id=@trigger.value; cid=0) -> P(id=*; cid=0), CO(cid=0)]
+//   ;
+//   e1 -->> {
+//     (e2:E2) (Public) [?] [@Initiator(e1) -> P(id=*; cid=0), CO(cid=0)]
+//   }
+// }
+
+
+
+// base case extended with spawn + trigger and nested spawn with 
+// "reply-like" combo - next step is @Receiver(e1)\CO(cid)
+// (e0:E0) (Public) [?:String] [CO(cid=0) -> P(id=*; cid=0)]
+// ;
+// e0 -->> {
+//   (e1:E1) (Public) [?] [P(id=@trigger.value; cid=0) -> P(id=*; cid=0), CO(cid=0)]
+//   ;
+//   e1 -->> {
+//     (e2:E2) (Public) [?] [@Receiver(e1) -> @Initiator(e1), CO(cid=0)]
+//   }
+// }
+
+
+// relations: example - cannot determine if -->% is to be preserved until --><>
+// is seen; therefore, we hold on to -->[Rx] relations until the recursion
+// from spawns bottoms out, and then extend that scope with "2nd degree"
+// relations
+// (e0:E0) (Public) [?] [CO(cid=0) -> P(id='p1'; cid=0)]
+// !(e1:E1) (Public) [?] [CO(cid=0) -> P(id='p1'; cid=0)]
+// (e2:E1) (Public) [?] [P(id='p1'; cid=0) -> CO(cid=0)]
+// ;
+// e0 -->% e1
+// e0 -->% e0
+// e2 -->> {
+//   (e3:E3) (Public) [?] [P(id='p1'; cid=0) -> CO(cid=0)]
+//   ;
+//   e1 --><> e3
+// }
+
+
+// Some data in events
+// (e0:createProsumer) (Public) [?:String] [CO(cid=0) -> P(id=*; cid=0)]
+// ;
+// e0 -->> {
+//   (e1:consume) (Public) [?:{kw:Integer}] [P(id=@trigger.value; cid=0) -> P(id=*; cid=0), CO(cid=0)]
+  
+//   (e3:E3) (Public) [2] [P(id=@trigger.value; cid=0)]
+//   ;
+//   e1 -->% e0
+//   e1 -->% e1
+//   e1 -->> {
+//     (e2:E2) (Public) [?] [@Receiver(e1) -> @Initiator(e1), CO(cid=0)]
+//   }
+// }

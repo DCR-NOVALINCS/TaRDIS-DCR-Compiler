@@ -26,8 +26,8 @@ y -->> {
     ;
     create -->> {
         //#erro valueExprId( o event que originou o spawn) é d ???
-        //(new:new)(L1(lid: @trigger.value.cid ; v: 'ola'))[{nid=@trigger.value.cid}][A] 
-        (new:new)(L1(lid: @trigger.value.cid; v: 'ola'))[{nid='ola'}][A] 
+        (new:new)(L1(lid: @trigger.value.cid ; v: 'ola'))[{nid=@trigger.value.cid}][A] 
+        //(new:new)(L1(lid: @trigger.value.cid; v: 'ola'))[{nid='ola'}][A] 
        ;
         new -->> {
            (d:d)(L1(lid:yinfo.value.id; v: @trigger.value.nid))[{did=0}][A]
