@@ -190,19 +190,25 @@ and encode_ifc_constraint' (expr' : expr') : Basic.t =
 and encode_ifc_constraint (expr : expr) : Basic.t =
   `Assoc [ ("ifcConstraint", encode_expr expr) ]
 
-let encode_event (event : event) : Basic.t =
+
+  and encode_events (events : event list) : Basic.t list =
+    List.map encode_event events 
+    (* |> fun lst -> `Assoc [ ("events", `List lst) ] *)
+    
+
+and encode_event (event : event) : Basic.t =
   let uid = ("uid", `String event.uid)
   and id = ("id", `String event.id)
-  and label = ("label", `String event.id)
+  and label = ("label", `String event.label)
   and data_type =
     ("dataType", encode_type_expr @@ (Option.get !(event.data_expr'.ty)).t_expr)
   and marking = ("marking", encode_marking event.marking) in
   let common =
     ([] : (string * Basic.t) list) |> fun (common : (string * Basic.t) list) ->
-    Option.fold event.ifc_constraint' ~none:common ~some:(fun x ->
+    Option.fold event.ifc_constraint_opt ~none:common ~some:(fun x ->
         ("ifcConstraint", encode_expr' x) :: common)
     |> fun (common : (string * Basic.t) list) ->
-    Option.fold event.instantiation_constraint' ~none:common ~some:(fun x ->
+    Option.fold event.instantiation_constraint_opt ~none:common ~some:(fun x ->
         ("instantiationConstraint", encode_expr' x) :: common)
     |> fun common ->
     uid :: id :: label :: data_type :: marking :: common |> fun common ->
@@ -220,7 +226,8 @@ let encode_event (event : event) : Basic.t =
       `Assoc [ ("inputEvent", `Assoc [ common; rcvrs ]) ]
     | Rx user_set ->
       let initrs =
-        encode_user_set_expr' user_set |> fun initrs -> ("initiators", initrs)
+        List.map encode_user_set_expr' user_set |> fun initrs ->
+        ("initiators", `List initrs)
       in
       `Assoc [ ("receiveEvent", `Assoc [ common; initrs ]) ]
   end
@@ -236,16 +243,73 @@ let encode_event (event : event) : Basic.t =
       `Assoc [ ("computationEvent", `Assoc [ common; expr; rcvrs ]) ]
     | Rx user_set ->
       let initrs =
-        encode_user_set_expr' user_set |> fun initrs -> ("initiators", initrs)
+        List.map encode_user_set_expr' user_set |> fun initrs ->
+        ("initiators", `List initrs)
       in
       `Assoc [ ("receiveEvent", `Assoc [ common; expr; initrs ]) ])
 
-let encode_events (events : event list) : Basic.t =
-  List.map encode_event events |> fun lst -> `Assoc [ ("events", `List lst) ]
+and encode_relations (relations : relation list) : Basic.t list =
+  List.map encode_relation relations 
+  (* |> fun lst ->
+  `Assoc [ ("relations", `List lst) ] *)
 
-let encode_endpoint_process (endpoint_process : endpoint) =
-  let { events; relations } = endpoint_process in
-  print_endline @@ Yojson.Basic.pretty_to_string @@ encode_events events
+and encode_relation
+    ({ uid
+     ; src = src_uid, src_id
+     ; instantiation_constraint_opt
+     ; relation_type
+     ; guard_opt
+     } :
+      relation) : Basic.t =
+  let uid = ("uid", `String uid)
+  and sourceId = ("sourceId", `String src_uid) in
+  let common =
+    ([] : (string * Basic.t) list) |> fun (common : (string * Basic.t) list) ->
+    Option.fold instantiation_constraint_opt ~none:common ~some:(fun x ->
+        ("instantiationConstraint", encode_expr' x) :: common)
+    |> fun (common : (string * Basic.t) list) ->
+    Option.fold guard_opt ~none:common ~some:(fun x ->
+        ("guard", encode_expr' x) :: common)
+    |> fun (common : (string * Basic.t) list) ->
+    uid :: sourceId :: common |> fun (common : (string * Basic.t) list) ->
+    ("common", `Assoc common)
+  in
+  match relation_type with
+  | ControlFlowRelation { target = target_uid, _; rel_type } ->
+    let target = ("target", `String target_uid)
+    and rel_type =
+      begin
+        match rel_type with
+        | Include -> ("relt_typ", `String "include")
+        | Exclude -> ("relt_typ", `String "exclude")
+        | Response -> ("relt_typ", `String "response")
+        | Condition -> ("relt_typ", `String "condition")
+        | Milestone -> ("relt_typ", `String "milestone")
+      end
+    in
+    `Assoc [ ("controlFlowRelation", `Assoc [ common; target; rel_type ]) ]
+  | SpawnRelation {trigger_id; graph}  ->
+    let trigger_id = ("triggerId", `String trigger_id) in
+    let (graph: string*Basic.t) = ("graph",`Assoc (encode_graph graph))
+  in
+    `Assoc [ ("spawnRelation", `Assoc [ common; trigger_id; graph ]) ]
+
+(* `Assoc [ ("TODO [encode relation]", `String "TODO [encode relation]") ] *)
+
+and encode_graph ({ events; relations } : endpoint) : (string * Basic.t) list =
+  let events = if List.is_empty events then None else Some (encode_events events)
+  and relations = if List.is_empty relations then None else Some (encode_relations relations) in
+  ([] : (string * Basic.t) list) |> fun (graph : (string * Basic.t) list) ->
+    Option.fold relations ~none:graph ~some:(fun x ->
+        ("relations", `List x) :: graph)
+  |> fun (graph : (string * Basic.t) list) ->
+    Option.fold events ~none:graph ~some:(fun x ->
+        ("events", `List x) :: graph)
+
+and encode_endpoint_process ((role, endpoint_process) : string * endpoint) =
+  let (graph:Basic.t) = `Assoc [("graph", `Assoc (encode_graph endpoint_process))] in
+  Yojson.Basic.pretty_to_string @@ graph
+  
 
 (* {"p3": "a_string"; "p4": {"p5": {"p1": true; "p2": 3}} } *)
 let test_record_val () =
@@ -379,7 +443,7 @@ let test_computation_event () =
     and default_val_opt = Some (annotate ~ty (Choreo.BoolVal true)) in
     { is_pending'; is_included'; default_val_opt }
   (* and instantiation_constraint' = annotate ~ty Choreo.True  *)
-  and ifc_constraint' = Some (annotate ~ty Choreo.True)
+  and ifc_constraint_opt = Some (annotate ~ty Choreo.True)
   and communication =
     let receivers =
       let role_expr_param_p1 = annotate (annotate "p1", annotate Any)
@@ -402,12 +466,12 @@ let test_computation_event () =
     ; label
     ; data_expr'
     ; marking
-    ; instantiation_constraint' = None
-    ; ifc_constraint'
+    ; instantiation_constraint_opt = None
+    ; ifc_constraint_opt
     ; communication
     }
   in
-  print_endline @@ Yojson.Basic.pretty_to_string @@ encode_events [ endpoint ]
+  print_endline @@ Yojson.Basic.pretty_to_string @@ `List (encode_events [ endpoint ])
 
 let test_input_event () =
   let annotate = Choreo.annotate
@@ -425,8 +489,8 @@ let test_input_event () =
     and is_included' = annotate true
     and default_val_opt = Some (annotate ~ty (Choreo.BoolVal true)) in
     { is_pending'; is_included'; default_val_opt }
-  and instantiation_constraint' = Some (annotate ~ty Choreo.True)
-  and ifc_constraint' = Some (annotate ~ty Choreo.True)
+  and instantiation_constraint_opt = Some (annotate ~ty Choreo.True)
+  and ifc_constraint_opt = Some (annotate ~ty Choreo.True)
   and communication =
     let receivers =
       let role_expr_param_p1 = annotate (annotate "p1", annotate Any)
@@ -449,12 +513,13 @@ let test_input_event () =
     ; label
     ; data_expr'
     ; marking
-    ; instantiation_constraint'
-    ; ifc_constraint'
+    ; instantiation_constraint_opt
+    ; ifc_constraint_opt
     ; communication
     }
   in
-  print_endline @@ Yojson.Basic.pretty_to_string @@ encode_events [ endpoint ]
+
+  print_endline @@ Yojson.Basic.pretty_to_string @@ `List (encode_events [ endpoint ])
 
 let test_receive_event () =
   let annotate = Choreo.annotate
@@ -472,8 +537,8 @@ let test_receive_event () =
     and is_included' = annotate true
     and default_val_opt = Some (annotate ~ty (Choreo.BoolVal true)) in
     { is_pending'; is_included'; default_val_opt }
-  and instantiation_constraint' = Some (annotate ~ty Choreo.True)
-  and ifc_constraint' = None
+  and instantiation_constraint_opt = Some (annotate ~ty Choreo.True)
+  and ifc_constraint_opt = None
   and communication =
     let initiators =
       let role_expr_param_p1 = annotate (annotate "p1", annotate Any)
@@ -488,7 +553,7 @@ let test_receive_event () =
       in
       role_expr'
     in
-    Rx initiators
+    Rx [ initiators ]
   in
   let endpoint =
     { uid
@@ -496,9 +561,9 @@ let test_receive_event () =
     ; label
     ; data_expr'
     ; marking
-    ; instantiation_constraint'
-    ; ifc_constraint'
+    ; instantiation_constraint_opt
+    ; ifc_constraint_opt
     ; communication
     }
   in
-  print_endline @@ Yojson.Basic.pretty_to_string @@ encode_events [ endpoint ]
+  print_endline @@ Yojson.Basic.pretty_to_string @@ `List (encode_events [ endpoint ])

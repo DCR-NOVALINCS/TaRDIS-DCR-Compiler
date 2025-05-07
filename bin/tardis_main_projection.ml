@@ -45,6 +45,7 @@ let parse_verify_program lexbuf =
 let process_choreography lexbuf =
   let open Utils.Results in
   let open Endpoint_projection in
+  let open Translation in
   parse_verify_program lexbuf >>= fun (typecheck_res, program) ->
   (* Verification.Static_checking.check_static_information_security program
   >>= fun _ -> *)
@@ -54,7 +55,11 @@ let process_choreography lexbuf =
   Projectability.check program typecheck_res >>= fun () ->
   (* TODO [post-demo] have projections return something more friendly than the
      entire projection context - need to check what's needed first *)
-  Projections.project program |> fun _projection_ctxts ->
+     Projections.project program StringMap.empty |> fun endpoints ->
+      let endpoint_encodings = List.map Babel.encode_endpoint_process endpoints in
+      List.iter print_endline endpoint_encodings;
+      (* TODO -> let unparsed_projections = .... *)
+      (* Translation.Babel.test_computation_event ();  *)
   Ok ()
 (* let babel_unparsed = List.map (Babel.Unparser.babel_unparse
    event_types_by_label) projection_ctxts in *)
