@@ -57,7 +57,7 @@ let process_choreography lexbuf =
      entire projection context - need to check what's needed first *)
      Projections.project program StringMap.empty |> fun endpoints ->
       let endpoint_encodings = List.map Babel.encode_endpoint_process endpoints in
-      List.iter print_endline endpoint_encodings;
+      List.iter print_endline (List.map snd endpoint_encodings);
       (* TODO -> let unparsed_projections = .... *)
       (* Translation.Babel.test_computation_event ();  *)
   Ok ()

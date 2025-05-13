@@ -55,12 +55,12 @@ let process_choreography lexbuf =
   Projectability.check program typecheck_res >>= fun () ->
   (* TODO [post-demo] have projections return something more friendly than the
      entire projection context - need to check what's needed first 
-     >> [already] in the making... *)
+     [UPDATE: almost completed] *)
   Projections.project program ifc_constraints_by_uid |> fun endpoints ->
   let endpoint_encodings = List.map Babel.encode_endpoint_process endpoints in
-  List.iter print_endline endpoint_encodings;
+  List.iter print_endline (List.map snd endpoint_encodings);
   (* Translation.Babel.test_computation_event (); *)
-  Ok ()
+  Ok (endpoint_encodings)
 
 (* TODO -> List.iter unparsed_projections unparse_projection_to_file *)
 (* unparse_to_file_with_blob_tmpl "output_babel.java" ([%blob
@@ -70,8 +70,10 @@ let process_choreography lexbuf =
 let main () =
   let lexbuf = Lexing.from_channel stdin in
   match process_choreography lexbuf with
-  | Ok () ->
+  | Ok (endpoints) ->
+    List.iter (fun (role, endpoint) -> unparse_to_file (role^".json") endpoint) endpoints;
     print_endline "Compilation succeeded.";
+
     flush stdout;
     exit 0
   | Error err ->

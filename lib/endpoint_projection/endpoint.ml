@@ -2,7 +2,8 @@ module Choreo = Frontend.Syntax
 open Userset_encoding
 
 type endpoint =
-  { events : event list
+  { role_decl : role_decl
+  ; events : event list
   ; relations : relation list
   }
 
@@ -19,6 +20,7 @@ type endpoint =
     [instantiation_constraint] computation exmpression *)
 and event =
   { uid : Choreo.identifier
+  ; element_uid : Choreo.element_uid
   ; id : Choreo.event_id
   ; label : Choreo.event_ty
   ; data_expr' : Choreo.data_expr'
@@ -29,6 +31,10 @@ and event =
   }
 
 and marking = Choreo.event_marking
+
+and role_decl = Choreo.value_dep_role_decl
+
+and identifier' = Choreo.identifier'
 
 (*
     =============================================================================
@@ -80,7 +86,10 @@ and relation_t =
       { target : Choreo.element_uid * Choreo.event_id
       ; rel_type : Choreo.relation_type
       }
-  | SpawnRelation of {trigger_id:Choreo.identifier; graph: endpoint; }
+  | SpawnRelation of
+      { trigger_id : Choreo.identifier
+      ; graph : endpoint
+      }
 
 and communication =
   | Local

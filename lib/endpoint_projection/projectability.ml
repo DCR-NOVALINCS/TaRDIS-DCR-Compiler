@@ -515,9 +515,9 @@ end = struct
       |> List.map fst |> StringSet.of_list)
 
   let union (left : t) (right : t) : t =
-    print_endline "@projectability.RoleCtxt.union";
+    (* print_endline "@projectability.RoleCtxt.union";
     print_endline @@ Printf.sprintf "left: %s" (CnfRole.to_string left.group);
-    print_endline @@ Printf.sprintf "right: %s" (CnfRole.to_string right.group);
+    print_endline @@ Printf.sprintf "right: %s" (CnfRole.to_string right.group); *)
     if role_label left <> role_label right then
       raise @@ Internal_error "Expecting arguments of same role"
     else
@@ -1164,7 +1164,7 @@ and check_data_dependency (e0 : EventCtxt.t) (e1 : EventCtxt.t) =
   and e1_base_init = EventCtxt.base_initiators e1
   and e1_base_rcv = EventCtxt.base_receivers e1
   and e1_base_participants = EventCtxt.base_participants e1 in
-  print_endline
+  (* print_endline
   @@ Printf.sprintf
        "=depended_base_init=\n%s"
        (CnfUserset.to_string e1_base_init);
@@ -1175,7 +1175,7 @@ and check_data_dependency (e0 : EventCtxt.t) (e1 : EventCtxt.t) =
   print_endline
   @@ Printf.sprintf
        "=depended_base_participants=\n%s\n"
-       (CnfUserset.to_string e1_base_participants);
+       (CnfUserset.to_string e1_base_participants); *)
   (* 1. every potential initiator of e0 must participate in e1 *)
   if not @@ CnfUserset.is_subset e0_base_init e1_base_participants then (
     print_endline
@@ -1212,9 +1212,9 @@ and process_events (ctxt : Context.t) (events : Choreo.event' list) =
     let trigger_ctxt, event_ctxt =
       EventCtxt.init ctxt.Context.trigger_ctxt ~uid ~id ~initiator ~receivers
     in
-    print_endline "\n>>>>>>>>>>>>>> @projectability.ml [processed event] ";
+    (* print_endline "\n>>>>>>>>>>>>>> @projectability.ml [processed event] ";
     print_endline @@ EventCtxt.to_string event_ctxt;
-    print_endline "<<<<<<<<<<<<<< ";
+    print_endline "<<<<<<<<<<<<<< "; *)
     let ctxt = Context.on_event trigger_ctxt event_ctxt ctxt in
     (* print_endline
        @@ Printf.sprintf
@@ -1225,19 +1225,19 @@ and process_events (ctxt : Context.t) (events : Choreo.event' list) =
   and check_event (ctxt : Context.t) (event' : Choreo.event') =
     let ctxt, event_ctxt = process_event ctxt event' in
     let event_id = event_ctxt.id in
-    print_endline @@ Printf.sprintf "\nChecking event %s: \n" event_id;
+    (* print_endline @@ Printf.sprintf "\nChecking event %s: \n" event_id; *)
     (* users "participating" in the current scope *)
     let participants_in_scope =
       TriggerCtxt.participants_in_scope ctxt.Context.trigger_ctxt
     (* event's "base" participants - all potential initiators and receivers *)
     and event_base_participants = EventCtxt.base_participants event_ctxt in
 
-    print_endline "participants in scope:";
+    (* print_endline "participants in scope:";
     print_endline @@ CnfUserset.to_string participants_in_scope;
     print_endline "----";
     print_endline "event base participants";
     print_endline @@ CnfUserset.to_string event_base_participants;
-    print_endline "\n";
+    print_endline "\n"; *)
     if not @@ CnfUserset.is_subset event_base_participants participants_in_scope
     then (
       (* not all of the event's "base" participants are in scope (visible) *)
@@ -1284,19 +1284,19 @@ and check_relations (ctxt : Context.t) (relations : Choreo.relation' list) =
     let src_ctxt = Context.find_event_ctxt_by_id src_id ctxt
     and tgt_ctxt = Context.find_event_ctxt_by_id tgt_id ctxt in
     let src_base_participants = EventCtxt.base_participants src_ctxt in
-    print_endline "\n-------------------";
+    (* print_endline "\n-------------------";
     print_endline "src_base_participants:";
-    print_endline @@ CnfUserset.to_string src_base_participants;
+    print_endline @@ CnfUserset.to_string src_base_participants; *)
     let tgt_base_initiators = EventCtxt.base_initiators tgt_ctxt in
-    print_endline "tgt_base_initiators:";
-    print_endline @@ CnfUserset.to_string tgt_base_initiators;
+    (* print_endline "tgt_base_initiators:";
+    print_endline @@ CnfUserset.to_string tgt_base_initiators; *)
     let observers =
       CnfUserset.resolve_intersection src_base_participants tgt_base_initiators
     in
 
-    print_endline "observers:";
+    (* print_endline "observers:";
     print_endline @@ CnfUserset.to_string observers;
-    print_endline "-------------------\n";
+    print_endline "-------------------\n"; *)
     if CnfUserset.is_empty observers then (
       (* TODO result.error *)
       print_endline "\n\n  !FAIL [redundant relation - applicable nowhere]\n\n";
@@ -1308,10 +1308,10 @@ and check_relations (ctxt : Context.t) (relations : Choreo.relation' list) =
       | _ -> Ok ()
   (* e0 --> e1 --> e2 *)
   and check_transitive_dependency ~r1 ~r2 =
-    print_string "checking transitive dependency: from ";
+    (* print_string "checking transitive dependency: from ";
     print_string @@ Printf.sprintf "{src:%s; tgt:%s} " r1.src_id r1.tgt_id;
     print_string "to";
-    print_endline @@ Printf.sprintf "{src:%s; tgt:%s}" r2.src_id r2.tgt_id;
+    print_endline @@ Printf.sprintf "{src:%s; tgt:%s}" r2.src_id r2.tgt_id; *)
     (* initiators of e2 that observe e1, must also observe e0 *)
     let e0_ctxt = Context.find_event_ctxt_by_id r1.src_id ctxt
     and e1_ctxt = Context.find_event_ctxt_by_id r2.src_id ctxt
@@ -1368,8 +1368,8 @@ and check_relations (ctxt : Context.t) (relations : Choreo.relation' list) =
               ~exec_based_rel:rel_t
               dependencies
           and r1 = rel_t in
-          print_string "number of state-based deps returned ";
-          print_endline @@ Int.to_string (List.length state_based_deps);
+          (* print_string "number of state-based deps returned ";
+          print_endline @@ Int.to_string (List.length state_based_deps); *)
           iter_left_error
             (fun r2 -> check_transitive_dependency ~r1 ~r2)
             state_based_deps
@@ -1380,8 +1380,8 @@ and check_relations (ctxt : Context.t) (relations : Choreo.relation' list) =
               ~state_based_rel:rel_t
               dependencies
           and r2 = rel_t in
-          print_string "number of exec-based deps returned ";
-          print_endline @@ Int.to_string (List.length exec_based_deps);
+          (* print_string "number of exec-based deps returned "; *)
+          (* print_endline @@ Int.to_string (List.length exec_based_deps); *)
           iter_left_error
             (fun r1 -> check_transitive_dependency ~r1 ~r2)
             exec_based_deps
@@ -1394,7 +1394,7 @@ and check_relations (ctxt : Context.t) (relations : Choreo.relation' list) =
      of the implicit spawn programs. *)
   and process_spawn_rels (ctxt : Context.t) = function
     | SpawnRelation (src_id', _, _expr', spawn_program) ->
-      print_endline "\n\n  spawn \n\n";
+      (* print_endline "\n\n  spawn \n\n"; *)
       let ctxts = Context.begin_spawn src_id'.data ctxt in
       iter_left_error (check_spawn_program spawn_program) ctxts
     | _ -> Ok ()

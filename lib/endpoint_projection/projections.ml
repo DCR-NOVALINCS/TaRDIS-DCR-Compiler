@@ -176,13 +176,16 @@ module Projection = struct
         * (element_uid * event_id)
         * (element_uid * event_id)
         * relation_type
-        * CnfRole.t
+        * cnf_formula
+      (* * CnfRole.t *)
     | SpawnRelation of string * element_uid * (element_uid * event_id) * program
 
   and communication =
     | Local
     | Tx of CnfUserset.t * Endpoint.user_set_expr' list
+    | TxO of CnfUserset.t * Endpoint.user_set_expr' list
     | Rx of CnfUserset.t * Endpoint.user_set_expr' list
+    | RxO of CnfUserset.t * Endpoint.user_set_expr' list
 
   and role_param = string * expr'
 
@@ -206,7 +209,7 @@ module Projection = struct
       and unparse_communication = function
         | Local ->
           Printf.sprintf "[Local]\n%s%s" next_indent (CnfRole.to_string e.self)
-        | Tx (receivers, rcv_set) ->
+        | Tx (receivers, rcv_set) | TxO (receivers, rcv_set) ->
           Printf.sprintf
             "[Tx]\n%s%s\n%s%s->  %s\n%s[Tx] @self -> "
             next_indent
@@ -216,7 +219,7 @@ module Projection = struct
             (unparse_participants receivers)
             next_indent
           (* (Frontend.Unparser.unparse_user_set_exprs rcv_set) *)
-        | Rx (initiators, init_set) ->
+        | Rx (initiators, init_set) | RxO (initiators, init_set) ->
           Printf.sprintf
             "[Rx]\n%s%s\n%s%s->  %s\n%s[Rx]  -> @self"
             next_indent
@@ -268,7 +271,8 @@ module Projection = struct
         (Frontend.Unparser.unparse_ctrl_flow_relation_type rel_type)
         target_uid
         target_id
-        (CnfRole.to_string self)
+        (unparse_cnf_formula self)
+      (* (CnfRole.to_string self) *)
     | _, SpawnRelation (_trigger_id, _uid, (src_uid, src_id), projection) ->
       let unparsed_projection =
         unparse_projection ~indent:(indent ^ "  ") projection
@@ -513,16 +517,18 @@ end = struct
     let scope = snd (peek t) in
     let trigger_event = List.assoc event_id scope.trigger_chain in
     match trigger_event.communication with
-    | Local | Tx _ -> [ trigger_event.self ]
-    | Rx (initiators, _) -> StringMap.bindings initiators |> List.map snd
+    | Local | Tx _ | TxO _ -> [ trigger_event.self ]
+    | Rx (initiators, _) | RxO (initiators, _) ->
+      StringMap.bindings initiators |> List.map snd
 
   let receivers_of (event_id : event_id) (t : t) =
     let scope = snd (peek t) in
     let trigger_event = List.assoc event_id scope.trigger_chain in
     match trigger_event.communication with
     | Local -> (* assume typechecking handled this (TODO) **) assert false
-    | Tx (receivers, _) -> StringMap.bindings receivers |> List.map snd
-    | Rx _ -> [ trigger_event.self ]
+    | Tx (receivers, _) | TxO (receivers, _) ->
+      StringMap.bindings receivers |> List.map snd
+    | Rx _ | RxO _ -> [ trigger_event.self ]
 
   let trigger_exprs (t : t) = (snd (peek t)).trigger_exprs_by_sym
 
@@ -863,7 +869,29 @@ end = struct
         , local_bindings
         , List.fold_left
             (fun roles_ctxts role_ctxt ->
-              StringMap.add role_ctxt.RoleCtxt.role.label role_ctxt roles_ctxts)
+              match
+                StringMap.find_opt role_ctxt.RoleCtxt.role.label role_ctxts
+              with
+              | None ->
+                StringMap.add
+                  role_ctxt.RoleCtxt.role.label
+                  role_ctxt
+                  roles_ctxts
+              | Some (prev : RoleCtxt.t) ->
+                if
+                  StringMap.is_empty prev.uses
+                  && StringMap.is_empty prev.defines
+                then
+                  let role = CnfRole.union prev.role role_ctxt.role in
+                  StringMap.add
+                    role_ctxt.role.label
+                    { prev with role }
+                    roles_ctxts
+                else
+                  assert
+                    (* not supporting multiple roles when using bindings *)
+                    (* TODO cleanup *)
+                    false)
             role_ctxts
             roles ))
       (trigger_ctxt, local_bindings, StringMap.empty)
@@ -1018,7 +1046,9 @@ module ProjectionContext = struct
     ; projection : Projection.program list
     ; projected_events_env : Projection.event_t list Env.t
     ; sourcing_rx_relations_by_uid :
-        ((element_uid * event_id) * relation_type * CnfRole.t) list StringMap.t
+        ((element_uid * event_id) * relation_type * cnf_formula) list
+        StringMap.t
+          (* ((element_uid * event_id) * relation_type * CnfRole.t) list StringMap.t *)
     }
 
   (* let mk_abstract_self (self : CnfRole.t) : CnfRole.t = *)
@@ -1204,6 +1234,57 @@ let extract_min_diff_constraint_set (initial_encoding : cnf_formula)
     new_constraints
   |> snd
 
+let to_instantiation_constraint_exprs (instantiation_constraints : cnf_formula)
+    (trigger_ctxt : TriggerCtxt.t) =
+  let map_sym sym = TriggerCtxt.lookup_expr_by_sym sym trigger_ctxt in
+  let map_cnf_bool_constraint ~(eq : bool) = function
+    | CnfSymEq (sym1, sym2) ->
+      let expr1', expr2' = (map_sym sym1, map_sym sym2) in
+      if eq then
+        annotate
+          ~ty:(Some { t_expr = Choreo.BoolTy; is_const = false })
+          (Choreo.BinaryOp (expr1', expr2', Choreo.Eq))
+      else
+        annotate
+          ~ty:(Some { t_expr = Choreo.BoolTy; is_const = false })
+          (Choreo.BinaryOp (expr1', expr2', Choreo.NotEq))
+    | CnfEq (sym, lit_val) ->
+      let expr' = map_sym sym in
+      let sym_expr' =
+        match lit_val with
+        | BoolLit bool_val ->
+          if bool_val then
+            annotate
+              ~ty:(Some { t_expr = Choreo.BoolTy; is_const = true })
+              Choreo.True
+          else
+            annotate
+              ~ty:(Some { t_expr = Choreo.BoolTy; is_const = true })
+              Choreo.False
+        | IntLit int_val ->
+          annotate
+            ~ty:(Some { t_expr = Choreo.IntTy; is_const = true })
+            (Choreo.IntLit int_val)
+        | StringLit str_val ->
+          annotate
+            ~ty:(Some { t_expr = Choreo.StringTy; is_const = true })
+            (Choreo.StringLit str_val)
+      in
+      if eq then
+        annotate
+          ~ty:(Some { t_expr = Choreo.BoolTy; is_const = false })
+          (Choreo.BinaryOp (expr', sym_expr', Choreo.Eq))
+      else
+        annotate
+          ~ty:(Some { t_expr = Choreo.BoolTy; is_const = false })
+          (Choreo.BinaryOp (expr', sym_expr', Choreo.NotEq))
+  in
+  List.map
+    (List.map (function
+      | Positive x -> map_cnf_bool_constraint ~eq:true x
+      | Negative x -> map_cnf_bool_constraint ~eq:false x))
+    instantiation_constraints
+
 let rec project_spawn_program ctxt
     ({ events; relations } : Choreo.spawn_program) =
   project_events ctxt events |> fun ctxt -> project_relations ctxt relations
@@ -1239,12 +1320,12 @@ and project_events ctxt (events : Choreo.event' list) : ProjectionContext.t =
         | TxO (implicit_constraints, receivers, rcv_set) ->
           [ ( uid ^ "_TxO"
             , implicit_constraints
-            , Projection.Tx (receivers, rcv_set) )
+            , Projection.TxO (receivers, rcv_set) )
           ]
         | RxO (implicit_constraints, initiators, init_set) ->
           [ ( uid ^ "_RxO"
             , implicit_constraints
-            , Projection.Rx (initiators, init_set) )
+            , Projection.RxO (initiators, init_set) )
           ]
         | TxRx
             ( (tx_implicit_constraints, receivers, rcv_set)
@@ -1269,7 +1350,7 @@ and project_events ctxt (events : Choreo.event' list) : ProjectionContext.t =
              in
 
              (* debug *)
-             print_endline
+             (* print_endline
              @@ Printf.sprintf
                   "\n\
                    Call to project with:\n\
@@ -1278,7 +1359,7 @@ and project_events ctxt (events : Choreo.event' list) : ProjectionContext.t =
                   \  > inst. constraints:\t%s\n"
                   (CnfRole.to_string base_self)
                   (CnfRole.to_string self)
-                  (unparse_cnf_formula @@ instantiation_constraints);
+                  (unparse_cnf_formula @@ instantiation_constraints); *)
 
              (* TODO [revisit :: move somewhere else] *)
              let instantiation_constraint_exprs =
@@ -1389,15 +1470,14 @@ and project_events ctxt (events : Choreo.event' list) : ProjectionContext.t =
     let event_id = (fst event'.data.info.data).data in
 
     (* debug *)
-    print_endline
+    (* print_endline
     @@ Printf.sprintf
          "\n\n\n    >>>> called with event_id=%s   self=%s\n\n"
          event_id
-         (CnfRole.to_string self);
-
+         (CnfRole.to_string self); *)
     let filter_out_abstract_self_marker (self_role : CnfRole.t) =
-      print_endline
-      @@ Printf.sprintf "before cleaning: %s" (CnfRole.to_string self_role);
+      (* print_endline
+      @@ Printf.sprintf "before cleaning: %s" (CnfRole.to_string self_role); *)
       let encoding =
         List.filter
           (fun x ->
@@ -1406,8 +1486,8 @@ and project_events ctxt (events : Choreo.event' list) : ProjectionContext.t =
           self_role.encoding
       in
       let self_role = { self_role with encoding } in
-      print_endline
-      @@ Printf.sprintf "after cleaning: %s" (CnfRole.to_string self_role);
+      (* print_endline
+      @@ Printf.sprintf "after cleaning: %s" (CnfRole.to_string self_role); *)
       self_role
     in
 
@@ -1436,8 +1516,7 @@ and project_events ctxt (events : Choreo.event' list) : ProjectionContext.t =
     let ctxt = { ctxt with trigger_ctxt } in
 
     (* debug *)
-    print_endline @@ CommunicationCtxt.to_string communication_ctxt;
-
+    (* print_endline @@ CommunicationCtxt.to_string communication_ctxt; *)
     let { local_bindings; init_ctxt; rcv_ctxt; _ } : CommunicationCtxt.t =
       communication_ctxt
     in
@@ -1743,11 +1822,11 @@ and project_events ctxt (events : Choreo.event' list) : ProjectionContext.t =
             if is_user tx_rx_role then
               (* already covered by tx_only and rx_only cases *)
               []
-            else (
-              print_endline
+            else
+              (* print_endline
               @@ Printf.sprintf
                    "tx_rx dual is a group: %s"
-                   (CnfRole.to_string tx_rx_role);
+                   (CnfRole.to_string tx_rx_role); *)
               Option.fold
                 (resolve_unify_self tx_ctxt.role)
                 ~none:[]
@@ -1927,7 +2006,7 @@ and project_events ctxt (events : Choreo.event' list) : ProjectionContext.t =
                       nested_bindings
                   in
 
-                  project ctxt event' ~self ~projection_type ~local_bindings)))
+                  project ctxt event' ~self ~projection_type ~local_bindings))
       in
 
       let projections = tx_only_res @ tx_rx_res @ rx_only_res in
@@ -2035,9 +2114,14 @@ and project_relations (ctxt : ProjectionContext.t)
           let instantiation_constraints =
             event.instantiation_constraint_exprs
           in
+          (* TODO extract method for relation renaming for subgraphs (needed in Babel) *)
           let (spawn_relation : Projection.relation) =
             ( instantiation_constraints
-            , SpawnRelation (trigger_id,uid, (src_uid, src_id'.data), projection) )
+            , SpawnRelation
+                ( trigger_id
+                , src_uid ^ "_" ^ uid
+                , (src_uid, src_id'.data)
+                , projection ) )
           in
           let ctxt = ProjectionContext.end_scope ctxt in
           let ctxt = ProjectionContext.add_relation ctxt spawn_relation in
@@ -2065,8 +2149,14 @@ and project_relations (ctxt : ProjectionContext.t)
             list_combine
               (fun (e1 : Projection.event_t) (e2 : Projection.event_t) ->
                 Option.bind
+                  (cnf_sat_solve
+                  @@ cnf_and
+                       e1.instantiation_constraints
+                       e2.instantiation_constraints)
+                  (fun constraints -> Some (e1, e2, constraints)))
+                (* Option.bind
                   (CnfRole.resolve_role_intersection e1.self e2.self)
-                  (fun self -> Some (e1, e2, self)))
+                  (fun self -> Some (e1, e2, self))) *)
               srcs
               targets
             |> List.filter_map Fun.id
@@ -2078,43 +2168,49 @@ and project_relations (ctxt : ProjectionContext.t)
             List.partition
               (fun (_, (e2 : Projection.event_t), _) ->
                 match e2.communication with
-                | Local | Tx _ -> true
-                | Rx _ -> false)
+                | Local | Tx _ | TxO _ -> true
+                | Rx _ | RxO _ -> false)
               candidates
             |> fun (x_init, x_rcv) ->
             let init_init, rx_init =
               List.partition
                 (fun ((e1 : Projection.event_t), _, _) ->
                   match e1.communication with
-                  | Local | Tx _ -> true
-                  | Rx _ -> false)
+                  | Local | Tx _ | TxO _ -> true
+                  | Rx _ | RxO _ -> false)
                 x_init
             in
             (init_init, rx_init, x_rcv)
           in
-          (* project all {? -> Local|T} relations now, since they are
-             straightfoward direct dependencies *)
+          (* project all {? -> Local|T} relations now - these are straightfoward
+           direct dependencies *)
           let ctxt, _ =
             List.fold_left_map
               (fun ctxt
-                   ((e1 : Projection.event_t), (e2 : Projection.event_t), self)
+                   ( (e1 : Projection.event_t)
+                   , (e2 : Projection.event_t)
+                   , constraints )
                  ->
                 (* !!!TODO resolve intersection as expr'-based constraint *)
                 let rel =
-                  ( ([] : expr' list list)
+                  (* ( ([] : expr' list list) *)
+                  ( to_instantiation_constraint_exprs
+                      constraints
+                      ctxt.ProjectionContext.trigger_ctxt
                   , Projection.ControlFlowRelation
                       ( uid
                       , (e1.uid, (fst e1.event'.data.info.data).data)
                       , (e2.uid, (fst e2.event'.data.info.data).data)
                       , rel_type'.data
-                      , self ) )
+                      , constraints ) )
+                  (* , self ) ) *)
                 in
                 (ProjectionContext.add_relation ctxt rel, rel))
               ctxt
               (init_init @ rx_init)
           in
-          (* make {Rx -> Local|T} relations visible to nested scopes - they
-             need this to decide on "2nd degree" dependencies *)
+          (* make {Rx -> Local|T} relations visible to nested scopes - required 
+          to decide on "2nd degree" dependencies *)
           let ctxt, _ =
             List.fold_left_map
               (fun ctxt
@@ -2138,16 +2234,21 @@ and project_relations (ctxt : ProjectionContext.t)
           let acc =
             List.fold_left
               (fun acc
-                   ((e1 : Projection.event_t), (e2 : Projection.event_t), self)
+                   ( (e1 : Projection.event_t)
+                   , (e2 : Projection.event_t)
+                   , constraints )
                  ->
                 let rel =
-                  ( ([] : expr' list list)
+                  (* ( ([] : expr' list list) *)
+                  ( to_instantiation_constraint_exprs
+                      constraints
+                      ctxt.ProjectionContext.trigger_ctxt
                   , Projection.ControlFlowRelation
                       ( uid
                       , (e1.uid, (fst e1.event'.data.info.data).data)
                       , (e2.uid, (fst e2.event'.data.info.data).data)
                       , rel_type'.data
-                      , self ) )
+                      , constraints ) )
                 in
                 rel :: acc)
               []
@@ -2156,7 +2257,7 @@ and project_relations (ctxt : ProjectionContext.t)
           in
           (ctxt, acc)
         | _ ->
-          (* unles we have something projected at each end of the relation,
+          (* unless we have something projected at each end of the relation,
              the relation does not get a projection *)
           (ctxt, acc)
       end
@@ -2214,11 +2315,13 @@ and fold_role ?(none = None) ~some = function
 and to_endpoint (ctxt : ProjectionContext.t)
     ({ events; relations } : Projection.program) : Endpoint.endpoint =
   let events = List.map (to_endpoint_event ctxt) events
-  and relations = List.map (to_endpoint_relation ctxt) relations in
-  { events; relations }
+  and relations = List.map (to_endpoint_relation ctxt) relations
+  and role_decl = ctxt.ProjectionContext.role_decl'.data in
+  { role_decl; events; relations }
 
 and to_endpoint_event (ctxt : ProjectionContext.t)
-    ({ uid
+    ({ event'
+     ; uid
      ; label
      ; marking
      ; data_expr'
@@ -2228,7 +2331,8 @@ and to_endpoint_event (ctxt : ProjectionContext.t)
      } as event_t :
       Projection.event_t) : Endpoint.event =
   (* TODO [revisit] replacing with newly-generated uid (duals) - is this ok?  *)
-  let id = uid in
+  let element_uid = Option.get !(event'.uid) in
+  let id = (fst event'.data.info.data).data in
   let (bool_ty : Choreo.type_info option) =
     Some { t_expr = BoolTy; is_const = false }
   in
@@ -2255,13 +2359,17 @@ and to_endpoint_event (ctxt : ProjectionContext.t)
         match communication with
         | Local | Tx _ -> Some ifc
         | _ -> None)
-  and communication =
+  (* TODO [cleanup renaming using consts here] *)
+  and id, communication =
     match communication with
-    | Local -> Endpoint.Local
-    | Tx (_, receivers) -> Endpoint.Tx receivers
-    | Rx (_, initiators) -> Endpoint.Rx initiators
+    | Local -> (id, Endpoint.Local)
+    | Tx (_, receivers) -> (id, Endpoint.Tx receivers)
+    | TxO (_, receivers) -> (id, Endpoint.Tx receivers)
+    | Rx (_, initiators) -> (id, Endpoint.Rx initiators)
+    | RxO (_, initiators) -> (id, Endpoint.Rx initiators)
   in
-  { uid
+  { element_uid
+  ; uid
   ; id
   ; label
   ; data_expr'
@@ -2294,22 +2402,19 @@ and to_endpoint_relation (ctxt : ProjectionContext.t)
   | constrnt, ControlFlowRelation (uid, src, target, rel_type, _e) ->
     let (relation_type : Endpoint.relation_t) =
       Endpoint.ControlFlowRelation { target; rel_type }
-    and instantiation_constraint_opt = to_constraint constrnt 
-  and guard_opt = None
-  in
+    and instantiation_constraint_opt = to_constraint constrnt
+    and guard_opt = None in
     { uid; src; guard_opt; relation_type; instantiation_constraint_opt }
   | constrnt, SpawnRelation (trigger_id, uid, src, graph) ->
     let instantiation_constraint_opt = to_constraint constrnt in
     let graph = to_endpoint ctxt graph in
     let (relation_type : Endpoint.relation_t) =
-      Endpoint.SpawnRelation {graph; trigger_id} 
-    and guard_opt = None
-    in
+      Endpoint.SpawnRelation { graph; trigger_id }
+    and guard_opt = None in
     { uid; src; guard_opt; relation_type; instantiation_constraint_opt }
 
 let rec project (program : Choreo.program)
-    (ifc_constraints_by_uid : expr' StringMap.t) :
-    (string * Endpoint.endpoint) list =
+    (ifc_constraints_by_uid : expr' StringMap.t) : Endpoint.endpoint list =
   let project_role ctxts ctxt =
     project_spawn_program ctxt program.spawn_program |> fun ctxt ->
     tmp_debug ctxt;
@@ -2321,8 +2426,8 @@ let rec project (program : Choreo.program)
   (* (bad acces to stack-like structure)
     TODO cleanup/refactoring - hide this - encapsulate within ProjectionContext *)
   |> List.map (fun ctxt ->
-         ( ctxt.ProjectionContext.abstract_self.label
-         , to_endpoint ctxt (List.hd ctxt.ProjectionContext.projection) ))
+         (* ( ctxt.ProjectionContext.abstract_self.label,*)
+         to_endpoint ctxt (List.hd ctxt.ProjectionContext.projection))
 
 (* TODO remove tmp debug *)
 (* DEBUGS (tmp) *)

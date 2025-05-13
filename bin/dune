@@ -3,12 +3,6 @@
   (flags
    (:standard -warn-error -A))))
 
-; (executable
-;  (public_name reda)
-;  (name reda_main)
-;  (modules reda_main)
-;  (libraries utils reda cypher))
-
 (executable
  (public_name tardis)
  (name tardis_main)

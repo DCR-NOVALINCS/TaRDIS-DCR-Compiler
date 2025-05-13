@@ -147,7 +147,9 @@ and spawn_program =
     program.roles 
     --------------------------------------
   *)
-and value_dep_role_decl' = type_expr' parameterisable_role'
+and value_dep_role_decl' = value_dep_role_decl annotated
+
+and value_dep_role_decl = type_expr' parameterisable_role
 
 (*
     program.security_lattice

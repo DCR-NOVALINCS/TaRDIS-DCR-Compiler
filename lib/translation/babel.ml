@@ -190,14 +190,13 @@ and encode_ifc_constraint' (expr' : expr') : Basic.t =
 and encode_ifc_constraint (expr : expr) : Basic.t =
   `Assoc [ ("ifcConstraint", encode_expr expr) ]
 
-
-  and encode_events (events : event list) : Basic.t list =
-    List.map encode_event events 
-    (* |> fun lst -> `Assoc [ ("events", `List lst) ] *)
-    
+and encode_events (events : event list) : Basic.t list =
+  List.map encode_event events
+(* |> fun lst -> `Assoc [ ("events", `List lst) ] *)
 
 and encode_event (event : event) : Basic.t =
-  let uid = ("uid", `String event.uid)
+  let uid = ("endpointElementUID", `String event.uid)
+  and element_uid = ("choreoElementUID", `String event.element_uid)
   and id = ("id", `String event.id)
   and label = ("label", `String event.label)
   and data_type =
@@ -211,7 +210,7 @@ and encode_event (event : event) : Basic.t =
     Option.fold event.instantiation_constraint_opt ~none:common ~some:(fun x ->
         ("instantiationConstraint", encode_expr' x) :: common)
     |> fun common ->
-    uid :: id :: label :: data_type :: marking :: common |> fun common ->
+    uid :: element_uid :: id :: label :: data_type :: marking :: common |> fun common ->
     ("common", `Assoc common)
   in
   match event.data_expr'.data with
@@ -249,8 +248,8 @@ and encode_event (event : event) : Basic.t =
       `Assoc [ ("receiveEvent", `Assoc [ common; expr; initrs ]) ])
 
 and encode_relations (relations : relation list) : Basic.t list =
-  List.map encode_relation relations 
-  (* |> fun lst ->
+  List.map encode_relation relations
+(* |> fun lst ->
   `Assoc [ ("relations", `List lst) ] *)
 
 and encode_relation
@@ -261,7 +260,7 @@ and encode_relation
      ; guard_opt
      } :
       relation) : Basic.t =
-  let uid = ("uid", `String uid)
+  let uid = ("endpointElementUID", `String uid)
   and sourceId = ("sourceId", `String src_uid) in
   let common =
     ([] : (string * Basic.t) list) |> fun (common : (string * Basic.t) list) ->
@@ -272,44 +271,67 @@ and encode_relation
         ("guard", encode_expr' x) :: common)
     |> fun (common : (string * Basic.t) list) ->
     uid :: sourceId :: common |> fun (common : (string * Basic.t) list) ->
-    ("common", `Assoc common)
+    ("relationCommon", `Assoc common)
   in
   match relation_type with
   | ControlFlowRelation { target = target_uid, _; rel_type } ->
-    let target = ("target", `String target_uid)
+    let target = ("targetId", `String target_uid)
     and rel_type =
       begin
         match rel_type with
-        | Include -> ("relt_typ", `String "include")
-        | Exclude -> ("relt_typ", `String "exclude")
-        | Response -> ("relt_typ", `String "response")
-        | Condition -> ("relt_typ", `String "condition")
-        | Milestone -> ("relt_typ", `String "milestone")
+        | Include -> ("relationType", `String "include")
+        | Exclude -> ("relationType", `String "exclude")
+        | Response -> ("relationType", `String "response")
+        | Condition -> ("relationType", `String "condition")
+        | Milestone -> ("relationType", `String "milestone")
       end
     in
     `Assoc [ ("controlFlowRelation", `Assoc [ common; target; rel_type ]) ]
-  | SpawnRelation {trigger_id; graph}  ->
+  | SpawnRelation { trigger_id; graph } ->
     let trigger_id = ("triggerId", `String trigger_id) in
-    let (graph: string*Basic.t) = ("graph",`Assoc (encode_graph graph))
-  in
+    let (graph : string * Basic.t) = ("graph", `Assoc (encode_graph graph)) in
     `Assoc [ ("spawnRelation", `Assoc [ common; trigger_id; graph ]) ]
 
 (* `Assoc [ ("TODO [encode relation]", `String "TODO [encode relation]") ] *)
 
-and encode_graph ({ events; relations } : endpoint) : (string * Basic.t) list =
-  let events = if List.is_empty events then None else Some (encode_events events)
-  and relations = if List.is_empty relations then None else Some (encode_relations relations) in
-  ([] : (string * Basic.t) list) |> fun (graph : (string * Basic.t) list) ->
-    Option.fold relations ~none:graph ~some:(fun x ->
-        ("relations", `List x) :: graph)
-  |> fun (graph : (string * Basic.t) list) ->
-    Option.fold events ~none:graph ~some:(fun x ->
-        ("events", `List x) :: graph)
+and encode_role_decl (role_decl : role_decl) : Basic.t =
+  let label', param_decls = role_decl in
+  let role_label = ("label", `String label'.data)
+  and (param_types : Basic.t list) =
+    List.map
+      (fun ((param_name', param_type') : Choreo.identifier' * Choreo.type_expr')
+         ->
+        let (name : string * Basic.t) = ("name", `String param_name'.data)
+        and (param_type : string * Basic.t) =
+          ("type", encode_type_expr' param_type')
+        in
+        `Assoc [ name; param_type ])
+      (Choreo.deannotate_list param_decls)
+  in
+  `Assoc [ role_label; ("params", `List param_types) ]
 
-and encode_endpoint_process ((role, endpoint_process) : string * endpoint) =
-  let (graph:Basic.t) = `Assoc [("graph", `Assoc (encode_graph endpoint_process))] in
-  Yojson.Basic.pretty_to_string @@ graph
-  
+and encode_graph ({ events; relations; _ } : endpoint) : (string * Basic.t) list
+    =
+  let events =
+    if List.is_empty events then None else Some (encode_events events)
+  and relations =
+    if List.is_empty relations then None else Some (encode_relations relations)
+  in
+  ([] : (string * Basic.t) list) |> fun (graph : (string * Basic.t) list) ->
+  Option.fold relations ~none:graph ~some:(fun x ->
+      ("relations", `List x) :: graph)
+  |> fun (graph : (string * Basic.t) list) ->
+  Option.fold events ~none:graph ~some:(fun x -> ("events", `List x) :: graph)
+
+and encode_endpoint_process (endpoint : endpoint) : string * string =
+  let role_label = (fst endpoint.role_decl).data in
+  let (endpoint : Basic.t) =
+    `Assoc
+      [ ("role", encode_role_decl endpoint.role_decl)
+      ; ("graph", `Assoc (encode_graph endpoint))
+      ]
+  in
+  (role_label, Yojson.Basic.pretty_to_string @@ endpoint)
 
 (* {"p3": "a_string"; "p4": {"p5": {"p1": true; "p2": 3}} } *)
 let test_record_val () =
@@ -432,6 +454,7 @@ let test_computation_event () =
     Some { t_expr = BoolTy; is_const = true }
   in
   let uid = "e0_0_tx"
+  and element_uid = "0"
   and id = "e0"
   and label = "E0"
   and data_expr' =
@@ -461,7 +484,8 @@ let test_computation_event () =
     Tx receivers
   in
   let endpoint =
-    { uid
+    { element_uid
+      ;uid
     ; id
     ; label
     ; data_expr'
@@ -471,7 +495,8 @@ let test_computation_event () =
     ; communication
     }
   in
-  print_endline @@ Yojson.Basic.pretty_to_string @@ `List (encode_events [ endpoint ])
+  print_endline @@ Yojson.Basic.pretty_to_string
+  @@ `List (encode_events [ endpoint ])
 
 let test_input_event () =
   let annotate = Choreo.annotate
@@ -479,6 +504,7 @@ let test_input_event () =
     Some { t_expr = BoolTy; is_const = true }
   in
   let uid = "e0_0_tx"
+  and element_uid = "0"
   and id = "e0"
   and label = "E0"
   and data_expr' =
@@ -509,6 +535,7 @@ let test_input_event () =
   in
   let endpoint =
     { uid
+    ;element_uid
     ; id
     ; label
     ; data_expr'
@@ -519,7 +546,8 @@ let test_input_event () =
     }
   in
 
-  print_endline @@ Yojson.Basic.pretty_to_string @@ `List (encode_events [ endpoint ])
+  print_endline @@ Yojson.Basic.pretty_to_string
+  @@ `List (encode_events [ endpoint ])
 
 let test_receive_event () =
   let annotate = Choreo.annotate
@@ -527,6 +555,7 @@ let test_receive_event () =
     Some { t_expr = BoolTy; is_const = true }
   in
   let uid = "e0_0_tx"
+  and element_uid = "0"
   and id = "e0"
   and label = "E0"
   and data_expr' =
@@ -557,6 +586,7 @@ let test_receive_event () =
   in
   let endpoint =
     { uid
+    ; element_uid
     ; id
     ; label
     ; data_expr'
@@ -566,4 +596,5 @@ let test_receive_event () =
     ; communication
     }
   in
-  print_endline @@ Yojson.Basic.pretty_to_string @@ `List (encode_events [ endpoint ])
+  print_endline @@ Yojson.Basic.pretty_to_string
+  @@ `List (encode_events [ endpoint ])

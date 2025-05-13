@@ -2,21 +2,22 @@
 
 (using menhir 2.0)
 
-(name tardis_dcr_translation_tool)
+(name tardis_dcr)
 
 (generate_opam_files true)
 
 (source
  (github DCR-NOVALINCS/TaRDIS-DCR))
 
-(authors "TaRDIS Project Team")
+(authors "TaRDIS Project - WP3/DCR Team")
+(maintainers "TaRDIS Project - WP3/DCR Team")
 
-(license LICENSE)
+(license MIT)
 
 (documentation https://url/to/documentation)
 
 (package
- (name tardis_dcr_translation_tool)
+ (name tardis_dcr)
  (synopsis "A short synopsis")
  (description "A longer description")
  (depends
