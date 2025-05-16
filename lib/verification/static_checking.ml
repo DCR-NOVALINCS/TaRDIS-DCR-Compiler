@@ -82,11 +82,17 @@ let _BOT_LEVEL : security_level = [ annotate (annotate _BOT, []) ]
 let global_label_SC : security_level TreeMap.t ref = ref TreeMap.empty
 
 module CnfExprCtxt : sig
+  type mode =
+    | Static
+    | Dynamic
+    | Hybrid
+
   type t =
     { symbolic_env : expr' Env.t
     ; contraints : cnf_formula TreeMap.t
     ; expr_map : expr' TreeMap.t
     ; dynamic_contraints : cnf_formula TreeMap.t
+    ; mode : mode
     }
 
   val and_list :
@@ -101,7 +107,7 @@ module CnfExprCtxt : sig
 
   val end_scope : t -> t
 
-  val empty : t
+  val empty : mode -> t
 
   val return_constainsts : t -> expr' TreeMap.t
 
@@ -118,6 +124,11 @@ module CnfExprCtxt : sig
 
   val debug_expr_TreeMap : expr list list TreeMap.t -> unit
 end = struct
+  type mode =
+    | Static
+    | Dynamic
+    | Hybrid
+
   type t =
     { symbolic_env : expr' Env.t
           (* string -> Expr ( stringfy da expr -> expr')*)
@@ -126,6 +137,7 @@ end = struct
     ; expr_map : expr' TreeMap.t (* string -> expr' ( uuid event-> expr')*)
     ; dynamic_contraints :
         cnf_formula TreeMap.t (* string -> cnf ( uuid event -> cnf)*)
+    ; mode : mode
     }
 
   (* let debug_expr_TreeMap expr_map =
@@ -214,11 +226,12 @@ end = struct
       lst
       (UNSAT [ (Nowhere, "Error while aggregating CNF formulas with OR") ])
 
-  let empty : t =
+  let empty mode : t =
     { symbolic_env = Env.empty
     ; contraints = TreeMap.empty
     ; expr_map = TreeMap.empty
     ; dynamic_contraints = TreeMap.empty
+    ; mode
     }
 
   let begin_scope ctxt =
@@ -226,13 +239,16 @@ end = struct
     ; contraints = ctxt.contraints
     ; expr_map = ctxt.expr_map
     ; dynamic_contraints = ctxt.dynamic_contraints
+    ; mode = ctxt.mode
     }
 
   let end_scope ctxt =
+    debug_expr_env ctxt.symbolic_env;
     { symbolic_env = Env.end_scope ctxt.symbolic_env
     ; contraints = ctxt.contraints
     ; expr_map = ctxt.expr_map
     ; dynamic_contraints = ctxt.dynamic_contraints
+    ; mode = ctxt.mode
     }
 
   let cnf_expr (cnf : cnf_formula) ctxt : expr' =
@@ -242,7 +258,10 @@ end = struct
         | CnfSymEq (id1, id2) -> begin
           match (Env.find_flat_opt id1 env, Env.find_flat_opt id2 env) with
           | Some expr1, Some expr2 ->
-            annotate ~loc:expr1.loc (BinaryOp (expr1, expr2, Eq))
+            annotate
+              ~loc:expr1.loc
+              ~ty:(Some { t_expr = Choreo.BoolTy; is_const = false })
+              (BinaryOp (expr1, expr2, Eq))
           | _, _ -> assert false
         end
         | CnfEq (id, value) -> begin
@@ -251,15 +270,24 @@ end = struct
             match value with
             | BoolLit b ->
               if b then
-                annotate ~loc:expr.loc (BinaryOp (expr, annotate True, Eq))
-              else annotate ~loc:expr.loc (BinaryOp (expr, annotate False, Eq))
+                annotate
+                  ~loc:expr.loc
+                  ~ty:(Some { t_expr = Choreo.BoolTy; is_const = true })
+                  (BinaryOp (expr, annotate True, Eq))
+              else
+                annotate
+                  ~loc:expr.loc
+                  ~ty:(Some { t_expr = Choreo.BoolTy; is_const = true })
+                  (BinaryOp (expr, annotate False, Eq))
             | IntLit i ->
               annotate
                 ~loc:expr.loc
+                ~ty:(Some { t_expr = Choreo.IntTy; is_const = true })
                 (BinaryOp (expr, annotate (Choreo.IntLit i), Eq))
             | StringLit s ->
               annotate
                 ~loc:expr.loc
+                ~ty:(Some { t_expr = Choreo.StringTy; is_const = true })
                 (BinaryOp (expr, annotate (Choreo.StringLit s), Eq))
           end
           | None -> assert false
@@ -271,7 +299,10 @@ end = struct
            let rec aux (literals : literal list) =
              begin
                match literals with
-               | [] -> annotate False
+               | [] ->
+                 annotate
+                   ~ty:(Some { t_expr = Choreo.BoolTy; is_const = true })
+                   False
                | x :: xs ->
                  let expr_x =
                    begin
@@ -279,17 +310,23 @@ end = struct
                      | Positive const -> const_to_expr const ctxt.symbolic_env
                      | Negative const ->
                        annotate
+                         ~ty:(Some { t_expr = Choreo.BoolTy; is_const = true })
                          (UnaryOp
                             (const_to_expr const ctxt.symbolic_env, Negation))
                    end
                  in
-                 annotate (BinaryOp (expr_x, aux xs, Or))
+                 annotate
+                   ~ty:(Some { t_expr = Choreo.BoolTy; is_const = true })
+                   (BinaryOp (expr_x, aux xs, Or))
              end
            in
            aux list)
     |> List.fold_left
-         (fun acc x -> annotate (BinaryOp (x, acc, And)))
-         (annotate True)
+         (fun acc x ->
+           annotate
+             ~ty:(Some { t_expr = Choreo.BoolTy; is_const = true })
+             (BinaryOp (x, acc, And)))
+         (annotate ~ty:(Some { t_expr = Choreo.BoolTy; is_const = true }) True)
 
   let update_cnf_formula (uuid : string) (cnf : cnf_formula) ctxt =
     (* print_endline @@ "Cnf: " ^ unparse_cnf_formula cnf; *)
@@ -312,6 +349,7 @@ end = struct
         ; expr_map = TreeMap.add uuid (cnf_expr solver_cnf ctxt) ctxt.expr_map
         ; dynamic_contraints =
             TreeMap.add uuid solver_cnf ctxt.dynamic_contraints
+        ; mode = ctxt.mode
         }
       in
       (* debug_expr_env aux.symbolic_env; *)
@@ -350,7 +388,7 @@ module Ctxt : sig
 
   val bind : role_label -> node -> t -> t
 
-  val reset_references : t -> (expr' TreeMap.t, 'b) result
+  val reset_references : t -> (expr' TreeMap.t, (loc * string) list) result
 
   val get_trigger : t -> string
 
@@ -381,7 +419,14 @@ end = struct
   let reset_references ctxt =
     global_label_SC := TreeMap.empty;
     let new_expr_map = CnfExprCtxt.return_constainsts ctxt.symbolic in
-    Ok new_expr_map
+    begin
+      match ctxt.symbolic.mode with
+      | Hybrid -> Ok new_expr_map
+      | Static ->
+        if new_expr_map = TreeMap.empty then Ok new_expr_map
+        else Error [ (Nowhere, "Error Static: verification not possible") ]
+      | Dynamic -> Error [ (Nowhere, " Dynamic not implemented") ]
+    end
 
   let begin_scope trigger ctxt =
     { env = Env.begin_scope ctxt.env
@@ -559,7 +604,7 @@ let rec check_static_information_security program =
     { env = Env.empty
     ; lattice = ref TreeMap.empty
     ; sec_params = ref TreeMap.empty
-    ; symbolic = CnfExprCtxt.empty
+    ; symbolic = CnfExprCtxt.empty Hybrid
     ; global_label_SC = ref TreeMap.empty
     ; trigger_stack = []
     }
@@ -1259,6 +1304,14 @@ and compareSecurityLevels (node1 : sec_label') (node2 : sec_label') params env
           match (find_param param list1, find_param param list2) with
           | Bot, _ | Parameterised _, Top | Top, Top -> (ctxt, SAT :: list)
           | Parameterised exp1, Parameterised exp2 -> (
+            let symb1 = unparse_expr exp1 in
+            let symb2 = unparse_expr exp2 in
+            let new_ctxt =
+              CnfExprCtxt.update_expr'_env
+                symb2
+                exp2
+                (CnfExprCtxt.update_expr'_env symb1 exp1 ctxt)
+            in
             match (EvalExpr.evalExpr exp1 env, EvalExpr.evalExpr exp2 env2) with
             | Int n1, Int n2 ->
               if n1 == n2 then (ctxt, SAT :: list)
@@ -1301,38 +1354,25 @@ and compareSecurityLevels (node1 : sec_label') (node2 : sec_label') params env
                   ]
                 :: list )
             | Unknown, Unknown ->
-              let symb1 = unparse_expr exp1 in
-              let ctxt1 = CnfExprCtxt.update_expr'_env symb1 exp1 ctxt in
-              let symb2 = unparse_expr exp2 in
-              let ctxt2 = CnfExprCtxt.update_expr'_env symb2 exp2 ctxt1 in
-              (ctxt2, Unknown [ [ Positive (CnfSymEq (symb1, symb2)) ] ] :: list)
+              ( new_ctxt
+              , Unknown [ [ Positive (CnfSymEq (symb1, symb2)) ] ] :: list )
             | Unknown, Int s ->
-              let symb1 = unparse_expr exp1 in
-              let ctxt1 = CnfExprCtxt.update_expr'_env symb1 exp1 ctxt in
-              (ctxt1, Unknown [ [ Positive (CnfEq (symb1, IntLit s)) ] ] :: list)
+              ( new_ctxt
+              , Unknown [ [ Positive (CnfEq (symb1, IntLit s)) ] ] :: list )
             | Unknown, Bool s ->
-              let symb1 = unparse_expr exp1 in
-              let ctxt1 = CnfExprCtxt.update_expr'_env symb1 exp1 ctxt in
-              ( ctxt1
+              ( new_ctxt
               , Unknown [ [ Positive (CnfEq (symb1, BoolLit s)) ] ] :: list )
             | Unknown, String s ->
-              let symb1 = unparse_expr exp1 in
-              let ctxt1 = CnfExprCtxt.update_expr'_env symb1 exp1 ctxt in
-              ( ctxt1
+              ( new_ctxt
               , Unknown [ [ Positive (CnfEq (symb1, StringLit s)) ] ] :: list )
             | Int s, Unknown ->
-              let symb2 = unparse_expr exp2 in
-              let ctxt1 = CnfExprCtxt.update_expr'_env symb2 exp2 ctxt in
-              (ctxt1, Unknown [ [ Positive (CnfEq (symb2, IntLit s)) ] ] :: list)
+              ( new_ctxt
+              , Unknown [ [ Positive (CnfEq (symb2, IntLit s)) ] ] :: list )
             | Bool s, Unknown ->
-              let symb2 = unparse_expr exp2 in
-              let ctxt1 = CnfExprCtxt.update_expr'_env symb2 exp2 ctxt in
-              ( ctxt1
+              ( new_ctxt
               , Unknown [ [ Positive (CnfEq (symb2, BoolLit s)) ] ] :: list )
             | String s, Unknown ->
-              let symb2 = unparse_expr exp2 in
-              let ctxt1 = CnfExprCtxt.update_expr'_env symb2 exp2 ctxt in
-              ( ctxt1
+              ( new_ctxt
               , Unknown [ [ Positive (CnfEq (symb2, StringLit s)) ] ] :: list )
             | _ ->
               ( ctxt
