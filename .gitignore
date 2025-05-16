@@ -7,8 +7,4 @@ _opam/
 # Opam integration - freshly generated with each build
 *.opam
 
-output_cypher.*
-output_reda.*
-output_tardis.*
-output_babel.*
-translate.js
+_out/

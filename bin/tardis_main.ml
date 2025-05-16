@@ -4,15 +4,13 @@ module StringMap = Map.Make (String)
    (regexp_string target) replacement str *)
 
 let unparse_to_file file' res =
-  let file = file' in
+  let default_out_dir = "./_out" in
+  if not (Sys.file_exists default_out_dir) then Sys.mkdir default_out_dir 0o777
+  else ();
+  let file = default_out_dir ^ "/" ^ file' in
   let oc = open_out file in
   Printf.fprintf oc "%s\n" res;
   close_out oc
-
-(* let unparse_to_file_with_blob_tmpl dest_file blob_tmpl_str tmpl_context = let
-   oc = open_out dest_file in List.iter (fun (k, v) -> Printf.fprintf oc "%s\n"
-   @@ replace blob_tmpl_str (Printf.sprintf "// {{%s}}" k) v) tmpl_context;
-   close_out oc *)
 
 let print_errors errors =
   let open Frontend.Syntax in
@@ -51,27 +49,19 @@ let process_choreography lexbuf =
   >>= fun ifc_constraints_by_uid ->
   Frontend.Unparser.unparse_prog ~abbreviated:true program
   (* exceptions may occurr here due to IO - currently ignoring these *)
-  |> unparse_to_file "output_tardis.tardisdcr";
+  |> unparse_to_file "choreo";
   Projectability.check program typecheck_res >>= fun () ->
-  (* TODO [post-demo] have projections return something more friendly than the
-     entire projection context - need to check what's needed first 
-     [UPDATE: almost completed] *)
   Projections.project program ifc_constraints_by_uid |> fun endpoints ->
   let endpoint_encodings = List.map Babel.encode_endpoint_process endpoints in
-  (* List.iter print_endline (List.map snd endpoint_encodings); *)
-  (* Translation.Babel.test_computation_event (); *)
-  Ok (endpoint_encodings)
-
-(* TODO -> List.iter unparsed_projections unparse_projection_to_file *)
-(* unparse_to_file_with_blob_tmpl "output_babel.java" ([%blob
-   "resources/input_babel.java"]) [ ("code", babel_unparsed) ]; *)
-(* print_endline "Compilation succeeded."; flush stdout; exit 0 *)
+  Ok endpoint_encodings
 
 let main () =
   let lexbuf = Lexing.from_channel stdin in
   match process_choreography lexbuf with
-  | Ok (endpoints) ->
-    List.iter (fun (role, endpoint) -> unparse_to_file (role^".json") endpoint) endpoints;
+  | Ok endpoints ->
+    List.iter
+      (fun (role, endpoint) -> unparse_to_file (role ^ ".json") endpoint)
+      endpoints;
     print_endline "Compilation succeeded.";
 
     flush stdout;
@@ -82,9 +72,3 @@ let main () =
 (* Terminal input*)
 
 let () = main ()
-
-(* Typing.check_program prog >>= fun _typecheck_res -> *)
-(* Projections.project (prog.events, prog.relations) >>= fun projections ->
-   Babel.Translate.translate projections >>= fun babel_ctxt -> let unparsed_prog
-   = Unparser.unparse_prog ~indent:"" ~abbreviated:false prog in let
-   babel_unparsed = Babel.Unparser.unparse ~indent:"\t\t" babel_ctxt in *)
