@@ -1361,64 +1361,13 @@ and project_events ctxt (events : Choreo.event' list) : ProjectionContext.t =
                   (CnfRole.to_string self)
                   (unparse_cnf_formula @@ instantiation_constraints); *)
 
-             (* TODO [revisit :: move somewhere else] *)
-             let instantiation_constraint_exprs =
-               let map_sym sym =
-                 TriggerCtxt.lookup_expr_by_sym sym trigger_ctxt
-               in
-               let map_cnf_bool_constraint ~(eq : bool) = function
-                 | CnfSymEq (sym1, sym2) ->
-                   let expr1', expr2' = (map_sym sym1, map_sym sym2) in
-                   if eq then
-                     annotate
-                       ~ty:(Some { t_expr = Choreo.BoolTy; is_const = false })
-                       (Choreo.BinaryOp (expr1', expr2', Choreo.Eq))
-                   else
-                     annotate
-                       ~ty:(Some { t_expr = Choreo.BoolTy; is_const = false })
-                       (Choreo.BinaryOp (expr1', expr2', Choreo.NotEq))
-                 | CnfEq (sym, lit_val) ->
-                   let expr' = map_sym sym in
-                   let sym_expr' =
-                     match lit_val with
-                     | BoolLit bool_val ->
-                       if bool_val then
-                         annotate
-                           ~ty:
-                             (Some { t_expr = Choreo.BoolTy; is_const = true })
-                           Choreo.True
-                       else
-                         annotate
-                           ~ty:
-                             (Some { t_expr = Choreo.BoolTy; is_const = true })
-                           Choreo.False
-                     | IntLit int_val ->
-                       annotate
-                         ~ty:(Some { t_expr = Choreo.IntTy; is_const = true })
-                         (Choreo.IntLit int_val)
-                     | StringLit str_val ->
-                       annotate
-                         ~ty:
-                           (Some { t_expr = Choreo.StringTy; is_const = true })
-                         (Choreo.StringLit str_val)
-                   in
-                   if eq then
-                     annotate
-                       ~ty:(Some { t_expr = Choreo.BoolTy; is_const = false })
-                       (Choreo.BinaryOp (expr', sym_expr', Choreo.Eq))
-                   else
-                     annotate
-                       ~ty:(Some { t_expr = Choreo.BoolTy; is_const = false })
-                       (Choreo.BinaryOp (expr', sym_expr', Choreo.NotEq))
-               in
-               List.map
-                 (List.map (function
-                   | Positive x -> map_cnf_bool_constraint ~eq:true x
-                   | Negative x -> map_cnf_bool_constraint ~eq:false x))
-                 instantiation_constraints
-             in
-             (* TODO rewrite instantiation constraints converting @trigger and 
+             (* rewriting instantiation constraints converting @trigger and 
             bindings symbols alike back to computation expressions *)
+             let instantiation_constraint_exprs =
+               to_instantiation_constraint_exprs
+                 instantiation_constraints
+                 trigger_ctxt
+             in
 
              (* the (potentially more restricted) self to be propagated to 
              nested trigger scopes carries ALL implicit constraints *)
@@ -2355,7 +2304,9 @@ and to_endpoint_event (ctxt : ProjectionContext.t)
     (* print_endline @@ "Uid: " ^ element_uid;
     print_endline ""; *)
     Option.fold
-      (StringMap.find_opt element_uid ctxt.ProjectionContext.ifc_constraints_by_uid)
+      (StringMap.find_opt
+         element_uid
+         ctxt.ProjectionContext.ifc_constraints_by_uid)
       ~none:None
       ~some:(fun ifc ->
         match communication with
@@ -2424,9 +2375,11 @@ let rec project (program : Choreo.program)
   and init_ctxts =
     List.map (ProjectionContext.init ifc_constraints_by_uid) program.roles
   in
-  StringMap.iter ( fun x y -> print_endline @@ x ^": " ^Frontend.Unparser.unparse_expr y) ifc_constraints_by_uid;
+  StringMap.iter
+    (fun x y -> print_endline @@ x ^ ": " ^ Frontend.Unparser.unparse_expr y)
+    ifc_constraints_by_uid;
   print_endline @@ " End.......";
-    List.fold_left project_role [] init_ctxts
+  List.fold_left project_role [] init_ctxts
   (* (bad acces to stack-like structure)
     TODO cleanup/refactoring - hide this - encapsulate within ProjectionContext *)
   |> List.map (fun ctxt ->
