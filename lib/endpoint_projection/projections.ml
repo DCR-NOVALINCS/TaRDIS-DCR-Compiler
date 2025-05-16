@@ -2351,13 +2351,15 @@ and to_endpoint_event (ctxt : ProjectionContext.t)
       List.map (fun x -> fold Choreo.Or x) instantiation_constraint_exprs
       |> fun x -> fold Choreo.And x |> Option.some
   and ifc_constraint_opt =
-    let uid = (snd event_t.event'.data.info.data).data in
+    (* let uid = (snd event_t.event'.data.info.data).data in *)
+    (* print_endline @@ "Uid: " ^ element_uid;
+    print_endline ""; *)
     Option.fold
-      (StringMap.find_opt uid ctxt.ProjectionContext.ifc_constraints_by_uid)
+      (StringMap.find_opt element_uid ctxt.ProjectionContext.ifc_constraints_by_uid)
       ~none:None
       ~some:(fun ifc ->
         match communication with
-        | Local | Tx _ -> Some ifc
+        | Local | Tx _ | TxO _ -> Some ifc
         | _ -> None)
   (* TODO [cleanup renaming using consts here] *)
   and id, communication =
@@ -2422,7 +2424,9 @@ let rec project (program : Choreo.program)
   and init_ctxts =
     List.map (ProjectionContext.init ifc_constraints_by_uid) program.roles
   in
-  List.fold_left project_role [] init_ctxts
+  StringMap.iter ( fun x y -> print_endline @@ x ^": " ^Frontend.Unparser.unparse_expr y) ifc_constraints_by_uid;
+  print_endline @@ " End.......";
+    List.fold_left project_role [] init_ctxts
   (* (bad acces to stack-like structure)
     TODO cleanup/refactoring - hide this - encapsulate within ProjectionContext *)
   |> List.map (fun ctxt ->

@@ -121,9 +121,9 @@ and unparse_expr ?(quote = "'") { data = e; _ } =
   | IntLit n -> string_of_int n
   | StringLit s -> quote ^ s ^ quote
   | BinaryOp (e1, e2, op_type') ->
-    unparse_expr e1 ^ " "
+    "("^unparse_expr e1 ^ " "
     ^ unparse_binary_op_type op_type'
-    ^ " " ^ unparse_expr e2
+    ^ " " ^ unparse_expr e2^")"
   | UnaryOp (e, op_type') -> unparse_unary_op_type op_type' ^ unparse_expr e
   | Parenthesized e1 -> "(" ^ unparse_expr' e1 ^ ")"
   | EventRef s -> s.data

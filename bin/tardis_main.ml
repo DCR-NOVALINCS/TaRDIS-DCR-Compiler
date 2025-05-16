@@ -58,7 +58,7 @@ let process_choreography lexbuf =
      [UPDATE: almost completed] *)
   Projections.project program ifc_constraints_by_uid |> fun endpoints ->
   let endpoint_encodings = List.map Babel.encode_endpoint_process endpoints in
-  List.iter print_endline (List.map snd endpoint_encodings);
+  (* List.iter print_endline (List.map snd endpoint_encodings); *)
   (* Translation.Babel.test_computation_event (); *)
   Ok (endpoint_encodings)
 
