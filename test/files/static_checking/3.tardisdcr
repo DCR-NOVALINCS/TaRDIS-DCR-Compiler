@@ -5,7 +5,7 @@
 //  ---------------------------------------------- #
 //# @trigger.value == @trigger.value.cid
 // #spawn3.value == spawn2.value.cid
-//#uuid com o trigger;
+//#uuid com o trigger; Error
 //  expected: Equal to 0.1                       #
 //  ============================================== #
 A
