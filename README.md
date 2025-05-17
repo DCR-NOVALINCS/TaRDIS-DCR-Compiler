@@ -3,11 +3,6 @@ Build this project
 dune build
 ```
 
-Build javascript file
-```bash 
-dune build @js
-```
-
 Clear build files
 ```bash
 dune clean

@@ -724,7 +724,7 @@ end = struct
           , update_role [ Positive (CnfSymEq (param_sym, alpha_renaming)) ] uses
           )
         | None ->
-          (* must be a local binding *)
+          (* must be a local binding (introduced by the lhs) *)
           let renaming, spawn_bind_expr' =
             StringMap.find binding'.data local_bindings
           in
@@ -734,7 +734,7 @@ end = struct
               (* role already bound via previous param *)
               (false, uses)
             | None ->
-              (* first use of this binding by this role *)
+              (* first use of this binding by this role - leave it implicit *)
               let leading_param = param_sym in
               let local_bind_expr' = encode_self_prop_deref_expr named_param' in
               let (binding_info : RoleCtxt.binding_info) =
@@ -1169,6 +1169,7 @@ let rewrite_userset (bindings : expr' StringMap.t)
       | Expr expr' -> begin
         match expr'.data with
         | EventRef binding' ->
+          print_endline @@ "!!!   " ^ binding'.data;
           (* (reminder) EventRef reflects a binding in this context *)
           Endpoint.Expr (StringMap.find binding'.data bindings)
         | _ -> Endpoint.Expr expr'
@@ -1962,13 +1963,39 @@ and project_events ctxt (events : Choreo.event' list) : ProjectionContext.t =
 
       ProjectionContext.include_projected_event event_id projections ctxt
     | Some tx_ctxt, None ->
+      
+      (* TODO [refactor] *)
+      (* TODO join tx_ctxt's defined implicits to the mapping  *)
       let rcv_set =
+        (* Tx => @self leads local bindings *)
+        let tx_lead_local_bindings =
+          let mapper =
+            StringMap.map (fun (x : RoleCtxt.binding_info) ->
+                (x.renaming, x.local_bind_expr'))
+          in
+          mapper tx_ctxt.defines
+        in
+        (* rewrite remote user-set according to the bindings in scope *)
+        let rewrite local_bindings user_set_exprs =
+          List.map
+            (rewrite_userset
+               (StringMap.union
+                  (fun _ _ y -> Some y)
+                  (TriggerCtxt.bindings trigger_ctxt)
+                  local_bindings
+               |> StringMap.map (fun e -> snd e)))
+            user_set_exprs
+        in
+        rewrite tx_lead_local_bindings communication_ctxt.receivers
+      in
+
+      (* let rcv_set =
         List.map
           (rewrite_userset
              (TriggerCtxt.bindings trigger_ctxt
              |> StringMap.map (fun e -> snd e)))
           communication_ctxt.receivers
-      in
+      in *)
       let self =
         { self with
           encoding =
@@ -1985,13 +2012,38 @@ and project_events ctxt (events : Choreo.event' list) : ProjectionContext.t =
       in
       ProjectionContext.include_projected_event event_id projections ctxt
     | None, Some rx_ctxt ->
+
+      (* TODO [refactor] *)
       let init_set =
+        (* Tx => @self leads local bindings *)
+        let rx_lead_local_bindings =
+          let mapper =
+            StringMap.map (fun (x : RoleCtxt.binding_info) ->
+                (x.renaming, x.local_bind_expr'))
+          in
+          mapper rx_ctxt.uses
+        in
+        (* rewrite remote user-set according to the bindings in scope *)
+        let rewrite local_bindings user_set_exprs =
+          List.map
+            (rewrite_userset
+               (StringMap.union
+                  (fun _ _ y -> Some y)
+                  (TriggerCtxt.bindings trigger_ctxt)
+                  local_bindings
+               |> StringMap.map (fun e -> snd e)))
+            user_set_exprs
+        in
+        rewrite rx_lead_local_bindings communication_ctxt.initiators
+      in
+      
+      (* let init_set =
         List.map
           (rewrite_userset
              (TriggerCtxt.bindings trigger_ctxt
              |> StringMap.map (fun e -> snd e)))
           communication_ctxt.initiators
-      in
+      in *)
       let self =
         { self with
           encoding =

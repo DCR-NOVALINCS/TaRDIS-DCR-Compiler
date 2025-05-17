@@ -522,20 +522,21 @@ end = struct
       raise @@ Internal_error "Expecting arguments of same role"
     else
       let sprintf = Printf.sprintf in
+
       (* let group =
         Option.get @@ CnfRole.resolve_role_union left.group right.group in
       let all_sat = CnfRole.all_sat group in
       List.iter (fun r -> CnfRole.to_string r |> print_endline) all_sat;
       assert false; *)
       (* note: we know what we encoded, this must result in a valid role *)
-      
+
       (* assert false; *)
       let base =
         Option.get @@ CnfRole.resolve_role_union left.base right.base
       in
       (* print_endline @@ sprintf "\nbase:\n%s\n"
       @@ CnfRole.to_string ~indent:"  " base; *)
-      
+
       let group =
         Option.get @@ CnfRole.resolve_role_union left.group right.group
       in
@@ -1155,6 +1156,20 @@ let rec filter_unique_assignments (constrained_roles : CnfUserset.t) =
   |> List.map snd
   |> fold_left_error verify_clash_free_role StringMap.empty
 
+(* TODO refactor - move to CnfRole *)
+and is_user ({ param_types; encoding; _ } : CnfRole.t) =
+  let binds_param param_sym = function
+    | [ Positive (CnfSymEq (s1, s2)) ] ->
+      (s1 = param_sym && not (Symbols.encodes_param_name s2) && not (Symbols.encodes_param_val_sym s2))
+      || (s2 = param_sym && not (Symbols.encodes_param_name s1) && not (Symbols.encodes_param_val_sym s1))
+    | [ Positive (CnfEq (s, _)) ] -> s = param_sym
+    | _ -> false
+  in
+  List.for_all
+    (fun param_sym -> List.exists (binds_param param_sym) encoding)
+    (StringMap.bindings param_types
+    |> List.map (fun x -> Symbols.encode_param_name @@ fst x))
+
 and check_data_dependency (e0 : EventCtxt.t) (e1 : EventCtxt.t) =
   (* data dependency from e0 to e1 is valid iff every potential initiator of
       e0 (base) sees a single e1 (local/tx/rx), i.e., the dependency cannot be on
@@ -1164,7 +1179,7 @@ and check_data_dependency (e0 : EventCtxt.t) (e1 : EventCtxt.t) =
   and e1_base_init = EventCtxt.base_initiators e1
   and e1_base_rcv = EventCtxt.base_receivers e1
   and e1_base_participants = EventCtxt.base_participants e1 in
-  (* print_endline
+  print_endline
   @@ Printf.sprintf
        "=depended_base_init=\n%s"
        (CnfUserset.to_string e1_base_init);
@@ -1175,13 +1190,27 @@ and check_data_dependency (e0 : EventCtxt.t) (e1 : EventCtxt.t) =
   print_endline
   @@ Printf.sprintf
        "=depended_base_participants=\n%s\n"
-       (CnfUserset.to_string e1_base_participants); *)
+       (CnfUserset.to_string e1_base_participants);
   (* 1. every potential initiator of e0 must participate in e1 *)
   if not @@ CnfUserset.is_subset e0_base_init e1_base_participants then (
     print_endline
       "\n   !! FAIL: value-dep not every initiator sees dependency event\n\n";
     assert false (* 2. no initiator of e0 may "see" e1 as a dual event *))
-  else if
+  else
+    
+    let duals =
+      StringMap.filter
+        (fun _ v -> not @@ is_user v)
+        (CnfUserset.resolve_intersection e1_base_init e1_base_rcv)
+      |> CnfUserset.resolve_intersection e0_base_init
+    in
+    if not @@ CnfUserset.is_empty duals then (
+      print_endline
+        "\n\
+        \   !! FAIL: value-dep some initiators see a dual dependency event\n\n";
+      assert false)
+
+(* if
     not @@ CnfUserset.is_empty
     @@ CnfUserset.resolve_intersection
          (CnfUserset.resolve_intersection e1_base_init e1_base_rcv)
@@ -1189,7 +1218,7 @@ and check_data_dependency (e0 : EventCtxt.t) (e1 : EventCtxt.t) =
   then (
     print_endline
       "\n   !! FAIL: value-dep some initiators see a dual dependency event\n\n";
-    assert false)
+    assert false) *)
 
 (* process events and run pre-checks on "scope visibility" and data dependencies
    (so called, direct dependencies are checked on the recursion's way back up) *)

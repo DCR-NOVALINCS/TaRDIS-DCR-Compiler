@@ -1,13 +1,9 @@
 module StringMap = Map.Make (String)
 
-(* let replace str target replacement = let open Str in global_replace
-   (regexp_string target) replacement str *)
+let output_dir = "./_out"
 
-let unparse_to_file file' res =
-  let default_out_dir = "./_out" in
-  if not (Sys.file_exists default_out_dir) then Sys.mkdir default_out_dir 0o777
-  else ();
-  let file = default_out_dir ^ "/" ^ file' in
+let write_to_file filename res =
+  let file = Filename.concat output_dir filename in
   let oc = open_out file in
   Printf.fprintf oc "%s\n" res;
   close_out oc
@@ -49,18 +45,32 @@ let process_choreography lexbuf =
   >>= fun ifc_constraints_by_uid ->
   Frontend.Unparser.unparse_prog ~abbreviated:true program
   (* exceptions may occurr here due to IO - currently ignoring these *)
-  |> unparse_to_file "choreo";
+  |> write_to_file "choreo";
   Projectability.check program typecheck_res >>= fun () ->
   Projections.project program ifc_constraints_by_uid |> fun endpoints ->
   let endpoint_encodings = List.map Babel.encode_endpoint_process endpoints in
   Ok endpoint_encodings
 
+let prep_output_dir () =
+  (* rmdir -rf  *)
+  let rec rmrf path =
+    match Sys.is_directory path with
+    | true ->
+      Sys.readdir path
+      |> Array.iter (fun name -> rmrf (Filename.concat path name));
+      Sys.rmdir path
+    | false -> Sys.remove path
+  in
+  rmrf output_dir;
+  Sys.mkdir output_dir 0o777
+
 let main () =
+  prep_output_dir ();
   let lexbuf = Lexing.from_channel stdin in
   match process_choreography lexbuf with
   | Ok endpoints ->
     List.iter
-      (fun (role, endpoint) -> unparse_to_file (role ^ ".json") endpoint)
+      (fun (role, endpoint) -> write_to_file (role ^ ".json") endpoint)
       endpoints;
     print_endline "Compilation succeeded.";
 

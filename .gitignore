@@ -7,4 +7,6 @@ _opam/
 # Opam integration - freshly generated with each build
 *.opam
 
+# default (hardcoded) directory for compiler output files
 _out/
+
