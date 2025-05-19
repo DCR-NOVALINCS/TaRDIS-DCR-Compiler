@@ -557,8 +557,8 @@ and collect_event_dependencies ~ctxt:{ uid_env; _ } (event' : event') =
   match event'.data.data_expr.data with
   | Input type_expr ->
     Ok (uniq @@ collect_type_dependencies type_expr, uniq sec_deps)
-  | Computation expr ->
-    collect_expr_dependencies expr uid_env >>= fun expr_deps ->
+  | Computation expr' ->
+    collect_expr_dependencies expr' uid_env >>= fun expr_deps ->
     Ok ([], uniq (sec_deps @ expr_deps))
 
 (** Collect EventId- and Trigger-related dependencies; checks whether all

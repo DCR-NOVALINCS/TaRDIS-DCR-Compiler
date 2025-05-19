@@ -46,7 +46,7 @@ let process_choreography lexbuf =
   Frontend.Unparser.unparse_prog ~abbreviated:true program
   (* exceptions may occurr here due to IO - currently ignoring these *)
   |> write_to_file "choreo";
-  (* Projectability.check program typecheck_res >>= fun () -> *)
+  Projectability.check program typecheck_res >>= fun () ->
   Projections.project program ifc_constraints_by_uid |> fun endpoints ->
   let endpoint_encodings = List.map Babel.encode_endpoint_process endpoints in
   Ok endpoint_encodings

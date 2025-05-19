@@ -2418,6 +2418,7 @@ and to_endpoint_relation (ctxt : ProjectionContext.t)
     and guard_opt = None in
     { uid; src; guard_opt; relation_type; instantiation_constraint_opt }
 
+
 let rec project (program : Choreo.program)
     (ifc_constraints_by_uid : expr' StringMap.t) : Endpoint.endpoint list =
   let project_role ctxts ctxt =

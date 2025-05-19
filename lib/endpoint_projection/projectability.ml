@@ -1160,8 +1160,12 @@ let rec filter_unique_assignments (constrained_roles : CnfUserset.t) =
 and is_user ({ param_types; encoding; _ } : CnfRole.t) =
   let binds_param param_sym = function
     | [ Positive (CnfSymEq (s1, s2)) ] ->
-      (s1 = param_sym && not (Symbols.encodes_param_name s2) && not (Symbols.encodes_param_val_sym s2))
-      || (s2 = param_sym && not (Symbols.encodes_param_name s1) && not (Symbols.encodes_param_val_sym s1))
+      s1 = param_sym
+      && (not (Symbols.encodes_param_name s2))
+      && not (Symbols.encodes_param_val_sym s2)
+      || s2 = param_sym
+         && (not (Symbols.encodes_param_name s1))
+         && not (Symbols.encodes_param_val_sym s1)
     | [ Positive (CnfEq (s, _)) ] -> s = param_sym
     | _ -> false
   in
@@ -1197,7 +1201,6 @@ and check_data_dependency (e0 : EventCtxt.t) (e1 : EventCtxt.t) =
       "\n   !! FAIL: value-dep not every initiator sees dependency event\n\n";
     assert false (* 2. no initiator of e0 may "see" e1 as a dual event *))
   else
-    
     let duals =
       StringMap.filter
         (fun _ v -> not @@ is_user v)
@@ -1282,6 +1285,7 @@ and process_events (ctxt : Context.t) (events : Choreo.event' list) =
       let uid = event_ctxt.uid in
       (* TODO only collecting value-based data dependencies for now - not yet
          sure how to constrain the program to handle event-type dependencies *)
+      (* DO NOT discard - see comment in duplicate below *)
       let data_dependencies =
         (StringMap.find uid ctxt.event_nodes_by_uid).data_dependency
         |> ( function
@@ -1290,12 +1294,13 @@ and process_events (ctxt : Context.t) (events : Choreo.event' list) =
           (* StringSet.iter (print_endline) deps; *)
           StringSet.to_list deps
         | _ -> [] )
-        |> List.map (fun uid ->
-               (* print_endline (Env.find_flat uid ctxt.id_by_uid_env); *)
-               Env.find_flat uid ctxt.event_ids_by_uid)
+        |> List.map (fun uid -> Env.find_flat uid ctxt.event_ids_by_uid)
         |> List.map (fun id -> Env.find_flat id ctxt.event_ctxt_by_id)
       in
-      (* print_endline @@ Int.to_string (List.length data_dependencies); *)
+      (* OBSERVATION temporary override of data_dependencies as they should be
+      TODO eventually remove collect_event_dependencies and rely on 
+      preprocessing *)
+      let data_dependencies = collect_event_dependencies ctxt event' in
       List.iter
         (fun dep -> check_data_dependency event_ctxt dep)
         data_dependencies;
@@ -1440,6 +1445,65 @@ and check_spawn_program (spawn_program : Choreo.spawn_program)
   process_events ctxt spawn_program.events >>= fun ctxt ->
   (* print_endline @@ Context.to_string ctxt; Ok () *)
   check_relations ctxt spawn_program.relations
+
+(* ========================================================================= *)
+(* ============================= temporary ================================= *)
+(* TODO dependencies should be obtained upstream, from preprocessing - needs
+ some work, delaying it for now... *)
+
+(* collect direct dependencies (refs) on other events: requires processing
+   the event's security level, data expression and participants *)
+and collect_event_dependencies (ctxt : Context.t) (event' : event') =
+  (* collect any event references within the security level *)
+  let collect_sec_level_dependencies =
+    (* collect event references within a single security label's parameter *)
+    let collect_param_deps acc sec_label_param' =
+      let _, param = sec_label_param'.data in
+      match param.data with
+      | Parameterised expr' -> collect_expr_dependencies expr' @ acc
+      | _ -> acc
+    in
+    (* collect dependencies within a security label *)
+    let collect_label_deps acc sec_label' =
+      let _, params = sec_label'.data in
+      List.fold_left collect_param_deps acc params
+    in
+    List.fold_left collect_label_deps [] event'.data.security_level.data
+  in
+  let uniq l = List.sort_uniq String.compare l in
+  collect_sec_level_dependencies |> fun sec_deps ->
+  match event'.data.data_expr.data with
+  | Input _ ->
+    uniq sec_deps
+    |> List.map (fun id -> Env.find_flat id ctxt.Context.event_ctxt_by_id)
+  | Computation expr' ->
+    collect_expr_dependencies expr'
+    |> (fun expr_deps -> uniq (sec_deps @ expr_deps))
+    |> List.map (fun id -> Env.find_flat id ctxt.Context.event_ctxt_by_id)
+
+(** Collect EventId- and Trigger-related dependencies; checks whether all
+    references (both trigger and event ids) are valid *)
+and collect_expr_dependencies (expr' : expr') =
+  let rec collect_deps acc exprs =
+    match exprs with
+    | [] -> List.sort_uniq String.compare acc
+    | expr :: rest -> begin
+      match expr.data with
+      | EventRef id' -> collect_deps (id'.data :: acc) rest
+      | Trigger _ -> collect_deps acc rest
+      | PropDeref (expr, _) -> collect_deps acc (expr :: rest)
+      | Record fields ->
+        let values = List.map (fun { data = _, value; _ } -> value) fields in
+        collect_deps acc (values @ rest)
+      | BinaryOp (e1, e2, _) -> collect_deps acc (e1 :: e2 :: rest)
+      | UnaryOp (e1, _) -> collect_deps acc (e1 :: rest)
+      | _ -> collect_deps acc rest
+    end
+  in
+  collect_deps [] [ expr' ]
+
+(* ========================================================================= *)
+(* ========================================================================= *)
 
 (* entry-point *)
 let check (program : Choreo.program)
