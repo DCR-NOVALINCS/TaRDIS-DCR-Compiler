@@ -1179,7 +1179,7 @@ and check_data_dependency (e0 : EventCtxt.t) (e1 : EventCtxt.t) =
   and e1_base_init = EventCtxt.base_initiators e1
   and e1_base_rcv = EventCtxt.base_receivers e1
   and e1_base_participants = EventCtxt.base_participants e1 in
-  print_endline
+  (* print_endline
   @@ Printf.sprintf
        "=depended_base_init=\n%s"
        (CnfUserset.to_string e1_base_init);
@@ -1190,7 +1190,7 @@ and check_data_dependency (e0 : EventCtxt.t) (e1 : EventCtxt.t) =
   print_endline
   @@ Printf.sprintf
        "=depended_base_participants=\n%s\n"
-       (CnfUserset.to_string e1_base_participants);
+       (CnfUserset.to_string e1_base_participants); *)
   (* 1. every potential initiator of e0 must participate in e1 *)
   if not @@ CnfUserset.is_subset e0_base_init e1_base_participants then (
     print_endline
