@@ -1,6 +1,6 @@
 open Frontend
 
-let curr_dir = "../../../test/files/"
+(* let curr_dir = "../../../test/files/" *)
 
 (** Parse from a file path as input *)
 let parse_file (path:string) = 
@@ -13,7 +13,7 @@ let parse_file (path:string) =
     close_in ic;
     prog
   with Sys_error s -> 
-    print_endline ("Error parsing file: " ^ s);
+    print_endline ("!! Error parsing file: " ^ s);
     print_endline ("Current directory: " ^ Sys.getcwd ());
     exit 1
 

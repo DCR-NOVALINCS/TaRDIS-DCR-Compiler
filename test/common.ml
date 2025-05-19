@@ -1,17 +1,19 @@
 open OUnit2
-open Io
 open Utils
 
-(** Parses a file and returns the program *)
+(** Read-in (parse) test program *)
+let set_up (path: string) _test_ctxt = 
+  (* print_endline Io.curr_dir;
+  let path = Io.curr_dir ^ path in *)
+  Io.parse_file path
 
-(** Setups test context to contain information about the program, the node environment and lattive environment *)
-let setup (path: string) _test_ctxt = 
-  let path = Io.curr_dir ^ path in
-  parse_file path
-  (* (parse_file path, Env.empty_env, Env.empty_env) *)
-
-(** Teardown function for the test context *)
+(** Teardown (empty) *)
 let teardown _state _test_ctxt = ()
 
-(** Builds the context of the tests, given a filepath of a reda program*)
-let build_state (path: string) test_ctxt = bracket (setup path) teardown test_ctxt
+(** Build state for test based on the  *)
+let build_state (path_to_test_file: string) test_ctxt = 
+  try 
+  (bracket (set_up path_to_test_file) teardown test_ctxt);
+with Sys_error s ->
+  print_endline ("!! Error parsing file: " ^ s);
+  exit 1

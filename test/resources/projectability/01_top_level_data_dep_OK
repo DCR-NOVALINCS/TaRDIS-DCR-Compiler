@@ -1,0 +1,12 @@
+CO(cid:Integer)
+P(id:String; cid:Integer)
+Public
+;
+Public flows CO
+Public flows P
+;
+
+// ACCEPT [data-dependency OK] every potential @Initiator(e1) sees a single
+// e0 event - no ambiguity
+(e0:E0) (Public) [?] [CO(#cid as X) -> P(#id; cid=X), CO(#cid)]
+(e1:E1) (Public) [e0.value] [P(#id; #cid as Y) -> P(#id; cid=Y)]

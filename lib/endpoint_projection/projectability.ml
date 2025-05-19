@@ -7,6 +7,8 @@ open Choreo
 module StringMap = Map.Make (String)
 module StringSet = Set.Make (String)
 
+let err_t_ambiguous_dep_on_dual_event = "[Failed projectability-check: ambiguous data-dependency on dual event]"
+
 let rec peek : 'a. 'a list -> 'a = fun stack -> List.hd stack
 
 and pop : 'a. 'a list -> 'a * 'a list =
@@ -683,7 +685,8 @@ end
 
 module EventCtxt : sig
   type t =
-    { uid : element_uid
+    { event' : Choreo.event'
+    ; uid : element_uid
     ; id : event_id
     ; init_ctxt : RoleCtxt.t StringMap.t
     ; rcv_ctxt : RoleCtxt.t StringMap.t
@@ -691,7 +694,8 @@ module EventCtxt : sig
     }
 
   val init :
-       TriggerCtxt.t
+       Choreo.event'
+    -> TriggerCtxt.t
     -> uid:element_uid
     -> id:identifier
     -> initiator:user_set_expr'
@@ -710,7 +714,8 @@ module EventCtxt : sig
   val to_string : ?indent:string -> t -> string
 end = struct
   type t =
-    { uid : element_uid
+    { event' : Choreo.event'
+    ; uid : element_uid
     ; id : event_id
     ; init_ctxt : RoleCtxt.t StringMap.t
     ; rcv_ctxt : RoleCtxt.t StringMap.t
@@ -719,15 +724,15 @@ end = struct
 
   (* and interaction_group = RoleCtxt.t StringMap.t *)
 
-  let rec init trigger_ctxt ~uid ~id ~(initiator : user_set_expr')
-      ~(receivers : user_set_expr' list) =
+  let rec init (event' : Choreo.event') trigger_ctxt ~uid ~id
+      ~(initiator : user_set_expr') ~(receivers : user_set_expr' list) =
     let trigger_ctxt, bindings, init_ctxt =
       process_init_recv_expr trigger_ctxt StringMap.empty [ initiator ]
     in
     let trigger_ctxt, bindings, rcv_ctxt =
       process_init_recv_expr trigger_ctxt bindings receivers
     in
-    (trigger_ctxt, { uid; id; init_ctxt; rcv_ctxt; bindings })
+    (trigger_ctxt, { event'; uid; id; init_ctxt; rcv_ctxt; bindings })
 
   (*
     Process the user-set expressions corresponding to either the initiator or 
@@ -1196,10 +1201,12 @@ and check_data_dependency (e0 : EventCtxt.t) (e1 : EventCtxt.t) =
        "=depended_base_participants=\n%s\n"
        (CnfUserset.to_string e1_base_participants); *)
   (* 1. every potential initiator of e0 must participate in e1 *)
-  if not @@ CnfUserset.is_subset e0_base_init e1_base_participants then (
-    print_endline
+  if not @@ CnfUserset.is_subset e0_base_init e1_base_participants then
+    let err_msg = err_msg_on_direct_dependency_may_not_be_visibile e0 e1 in
+    Error [ (e0.event'.loc, err_msg) ]
+    (* print_endline
       "\n   !! FAIL: value-dep not every initiator sees dependency event\n\n";
-    assert false (* 2. no initiator of e0 may "see" e1 as a dual event *))
+    assert false 2. no initiator of e0 may "see" e1 as a dual event *)
   else
     let duals =
       StringMap.filter
@@ -1207,11 +1214,14 @@ and check_data_dependency (e0 : EventCtxt.t) (e1 : EventCtxt.t) =
         (CnfUserset.resolve_intersection e1_base_init e1_base_rcv)
       |> CnfUserset.resolve_intersection e0_base_init
     in
-    if not @@ CnfUserset.is_empty duals then (
-      print_endline
+    if not @@ CnfUserset.is_empty duals then
+      let err_msg = on_err_ambiguous_data_dependency e0 e1 in
+      Error [ (e0.event'.loc, err_msg) ]
+      (* print_endline
         "\n\
         \   !! FAIL: value-dep some initiators see a dual dependency event\n\n";
-      assert false)
+      assert false *)
+    else Ok e0
 
 (* if
     not @@ CnfUserset.is_empty
@@ -1242,7 +1252,13 @@ and process_events (ctxt : Context.t) (events : Choreo.event' list) =
       | Choreo.Interaction (initr', recvrs) -> (initr', recvrs)
     in
     let trigger_ctxt, event_ctxt =
-      EventCtxt.init ctxt.Context.trigger_ctxt ~uid ~id ~initiator ~receivers
+      EventCtxt.init
+        event'
+        ctxt.Context.trigger_ctxt
+        ~uid
+        ~id
+        ~initiator
+        ~receivers
     in
     (* print_endline "\n>>>>>>>>>>>>>> @projectability.ml [processed event] ";
     print_endline @@ EventCtxt.to_string event_ctxt;
@@ -1301,10 +1317,12 @@ and process_events (ctxt : Context.t) (events : Choreo.event' list) =
       TODO eventually remove collect_event_dependencies and rely on 
       preprocessing *)
       let data_dependencies = collect_event_dependencies ctxt event' in
-      List.iter
+      fold_left_error check_data_dependency event_ctxt data_dependencies
+      >>= fun _ -> Ok ctxt
+    (* List.iter
         (fun dep -> check_data_dependency event_ctxt dep)
         data_dependencies;
-      Ok ctxt
+      Ok ctxt *)
     (* TODO include data-dependency checks - can probably be done here *)
   in
   fold_left_error check_event ctxt events
@@ -1501,6 +1519,36 @@ and collect_expr_dependencies (expr' : expr') =
     end
   in
   collect_deps [] [ expr' ]
+
+and err_msg_on_direct_dependency_may_not_be_visibile (src : EventCtxt.t)
+    (target : EventCtxt.t) =
+  Printf.sprintf
+    "[Projectability-check failed]\n\
+    \  Event '%s' (%s) has a data-dependency on event '%s' (%s), but not every \
+     potential initiator of '%s' is guaranteed to see '%s'\n\
+    \    (suggestion: ensure that every initiator of '%s' participates in \
+     '%s')."
+    src.id
+    (string_of_loc src.event'.loc)
+    target.id
+    (string_of_loc target.event'.loc)
+    src.id
+    target.id
+    src.id
+    target.id
+
+and on_err_ambiguous_data_dependency (src : EventCtxt.t) (target : EventCtxt.t)
+    =
+  Printf.sprintf
+    "%s\n\
+    \  At least one initiator of event '%s' (%s) sees event '%s' (%s) as a dual \
+     event, making the data-dependency ambiguous.\n\
+    \    (suggestion: consider using a spawn instead)."
+    err_t_ambiguous_dep_on_dual_event
+    src.id
+    (string_of_loc src.event'.loc)
+    target.id
+    (string_of_loc target.event'.loc)
 
 (* ========================================================================= *)
 (* ========================================================================= *)
