@@ -43,6 +43,7 @@ rule read_token = parse
 	| "###"				  { read_comment_block lexbuf }
   | "//"          { read_line_comment lexbuf }
   | "#"           { HASHTAG }
+| "$"          { DOLLAR }
 	| "true"        { TRUE } 
 	| "false"       { FALSE } 
   (* dcr (unguarded) relations*)

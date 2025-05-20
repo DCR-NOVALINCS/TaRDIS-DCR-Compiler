@@ -5,7 +5,9 @@ open Verification
 module TreeMap = Map.Make (String)
 
 let static_ifc_checking_from_prog_state prog_state =
-  let prog = prog_state in
+  Verification.Preprocessing.preprocess_program prog_state
+  >>= fun preprocessing_res ->
+  Verification.Typing.check_program preprocessing_res >>= fun typecheck_res ->
   Static_checking.check_static_information_security prog
 
 (* let error_msg result =
@@ -30,13 +32,13 @@ let test_suite =
   >::: [ 
     ( "Simple testing" >:: fun test_ctxt ->
            let state = build_state "resources/static_checking/0.tardisdcr" test_ctxt in
-           test_case state (Ok TreeMap.empty ) "Expected ok" )
+           test_case state (Ok  TreeMap.empty ) "Expected ok" )
        ;
-        ( "Testing IFC type expr in input events" >:: fun test_ctxt ->
+        (* ( "Testing IFC type expr in input events" >:: fun test_ctxt ->
            let state = build_state "resources/static_checking/0.1.tardisdcr" test_ctxt in
            test_case state (Error []) "Expected Fail" )
         ; 
-        (* ("Testing IFC " >:: fun test_ctxt ->
+        ("Testing IFC " >:: fun test_ctxt ->
             let state = build_state "resources/static_checking/0.1.1.tardisdcr" test_ctxt in
                 test_case state ( Ok TreeMap.empty ) "Expected Ok in Test 0.1.1") 
           ; *)

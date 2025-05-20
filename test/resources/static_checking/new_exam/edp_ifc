@@ -1,0 +1,40 @@
+CO(cid:Integer)
+P(id:String; cid:Integer)
+Public
+;
+Public flows P
+Public flows CO
+;
+
+
+(r4c:request_forecast) (CO(cid:Bot), P(id:Bot; cid:Bot)) [?: {cid:Integer}] [CO(#cid as X) -> P(id=*; cid=X)]
+
+%(accounting:accounting) (CO(cid:Bot), P(id:Bot; cid:Bot)) [?] [CO(#cid as X)]
+(csm:consume) ( P(id:Bot; cid:Bot)) [?: {cid:Integer}] [P(#id; #cid as X) -> P(id=*; cid=X)]
+
+// supply fault scenario
+(fault:fault) (Public) [?] [P(#id; #cid as X) -> CO(cid=X)]
+;
+
+accounting -->% accounting
+r4c -->% csm
+
+r4c -->> {
+  (reply: reply) (CO(cid:Bot), P(id:Bot; cid:Bot)) [?] [@Receiver(r4c) -> @Initiator(r4c)]
+  ;
+  reply -->% reply
+  reply *--> accounting
+  reply -->+ accounting, csm
+}
+
+csm -->> {
+  (reply: reply) (P(id:Bot; cid:@trigger.value.cid)) [?] [@Receiver(csm) -> @Initiator(csm)]
+  ;
+  reply -->% reply
+  reply -->> {
+    (accept: accept) (P(id:Bot; cid:@trigger$csm.value.cid)) [?] [@Initiator(csm) -> @Receiver(csm)]
+    (reject: reject) (P(id:Bot; cid:@trigger$csm.value.cid)) [?] [@Initiator(csm) -> @Receiver(csm)]
+    ;
+    accept, reject -->% accept, reject
+  }
+}

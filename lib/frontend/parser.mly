@@ -169,7 +169,7 @@ let raiseError () =
 // userset expressions
 %token INITIATOR RECEIVER
 // misc
-%token ALIAS HASHTAG AT QUESTION ARROW PROP_DEREF
+%token ALIAS HASHTAG AT QUESTION ARROW PROP_DEREF DOLLAR
 // %token PIPE // TODO revise utility
 // %token UDRSCR // TODO revise utility
 %nonassoc NEG
@@ -530,7 +530,7 @@ plain_fact:
 | STR                                                                             { StringLit($1) }
 | id                                                                              { EventRef($1) } 
 | TRIGGER                                  { Trigger( resolve_trigger_id $1 None) }
-// | trigger=TRIGGER; HASHTAG id=id             { Trigger( resolve_trigger_id trigger (Some id))}
+| trigger=TRIGGER; DOLLAR id=id             { Trigger( resolve_trigger_id trigger (Some id))}
 | delimited(LBRACE, separated_nonempty_list(SEMICOLON, record_field), RBRACE)         { Record($1) }
 | expr = fact; PROP_DEREF; prop = id;                                             { PropDeref(expr, prop) }
 ;

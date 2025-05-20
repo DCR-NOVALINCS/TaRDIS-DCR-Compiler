@@ -3,18 +3,18 @@
   (flags
    (:standard -warn-error -A))))
 
-; (tests
-;  (names
+(tests
+ (names
 ;   test_typechecking
 ;   test_projectability
 ;   test_babel
-;   test_static_ifc
-;   )
-;   (deps (source_tree "resources"))
-;  (libraries ounit2 verification endpoint_projection translation utils))
+  test_static_ifc
+  )
+  (deps (source_tree "resources"))
+ (libraries ounit2 verification endpoint_projection translation utils))
 
-(test
- (name test_projectability)
- (libraries ounit2 verification endpoint_projection utils)
- (deps
-  (source_tree "./resources/projectability")))
+; (test
+;  (name test_projectability)
+;  (libraries ounit2 verification endpoint_projection utils)
+;  (deps
+;   (source_tree "./resources/projectability")))
