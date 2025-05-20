@@ -6,6 +6,7 @@ Public flows CO
 Public flows P
 ;
 
-// REJECT [data-dependency issue] not guaranteed that all @Initiator(e1) see e0
+// REJECT [data-dependency issue] 
+// not every every initiatior of e1 is guaranteed to see e0
 (e0:E0) (Public) [?] [CO(#cid) -> P(#id; cid=3), CO(#cid)]
 (e1:E1) (Public) [e0.value] [P(#id; #cid) -> P(#id; cid=3)]

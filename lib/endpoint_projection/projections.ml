@@ -887,11 +887,10 @@ end = struct
                     role_ctxt.role.label
                     { prev with role }
                     roles_ctxts
-                else
-                  assert
-                    (* not supporting multiple roles when using bindings *)
-                    (* TODO cleanup *)
-                    false)
+                else (
+                  print_endline
+                    "Currently not supporting multiple role instances when using bindings";
+                  assert false))
             role_ctxts
             roles ))
       (trigger_ctxt, local_bindings, StringMap.empty)
@@ -927,57 +926,6 @@ end
 let list_combine : 'a 'b 'c. ('a -> 'b -> 'c) -> 'a list -> 'b list -> 'c list =
  fun combinator l1 l2 ->
   List.concat (List.map (fun l1 -> List.map (fun l2 -> combinator l1 l2) l2) l1)
-(* 
-module Event : sig
-  (** [event'] base event as specified in the choreography.
-
-      [uid] unique identifier derived from the base [event']'s uid to account
-      the existence of dual events.
-
-      [self] specifies the user-the that instantiating this event.
-
-      [marking] derived from the base [event']'s marking, to account for the
-      rx/tx-specific rules for handling the event marking, namely, its initial
-      state.
-
-      [communication] describes the communication, if any, triggered by the
-      execution of this event (local/tx/rx)
-
-      [symbols] symbolic identifiers associated to trigger-based exprs used by
-      this event; symbols are used for encoding and are propagated into spawn
-      scopes triggered by the event; the mapping is later used to recover the
-      computation expressions back to generate the proper runtime instantiation
-      constraints. *)
-  type t =
-    { event' : event'
-    ; uid : identifier
-    ; self : CnfRole.t
-    ; marking : event_marking
-    ; communication : communication
-    ; symbols : expr' StringMap.t
-    }
-
-  and communication =
-    | Local
-    | Tx of CnfUserset.t
-    | Rx of CnfUserset.t
-end = struct
-  open Choreo
-
-  type t =
-    { event' : event'
-    ; uid : identifier
-    ; self : CnfRole.t
-    ; marking : Choreo.event_marking
-    ; communication : communication
-    ; symbols : expr' StringMap.t
-    }
-
-  and communication =
-    | Local
-    | Tx of CnfUserset.t
-    | Rx of CnfUserset.t
-end *)
 
 (* Indicates whether a constrained role encodes a single user.
 
@@ -999,21 +947,6 @@ let rec is_user ({ param_types; encoding; _ } : CnfRole.t) =
     (fun param_sym -> List.exists (binds_param param_sym) encoding)
     (StringMap.bindings param_types
     |> List.map (fun x -> Symbols.encode_param_name @@ fst x))
-(* TODO deprecate *)
-(* List.fold_left
-    (fun acc param ->
-      let param_sym = Symbols.encode_param_name param in
-      acc
-      && List.exists
-           (function
-             | [ Positive (CnfSymEq (s1, s2)) ] ->
-               (s1 = param_sym && not (Symbols.encodes_param_name s2))
-               || ((not (Symbols.encodes_param_name s1)) && s2 = param_sym)
-             | [ Positive (CnfEq (s, _)) ] -> param_sym = s
-             | _ -> false)
-           cnf)
-    true
-    (StringMap.bindings params |> List.map fst) *)
 
 module ProjectionContext = struct
   (*
@@ -1689,81 +1622,7 @@ and project_events ctxt (events : Choreo.event' list) : ProjectionContext.t =
         ( single_direction_project ~tx:true tx_ctxt rx_ctxt rcvrs rcv_set
         , (* and rx_only_res = *)
           single_direction_project ~tx:false rx_ctxt tx_ctxt initrs init_set )
-      (* *)
-      (* let tx_only_res =
-        let try_tx_only_project (tx_only_role : CnfRole.t) =
-          begin
-            match resolve_unify_self tx_only_role with
-            | None -> []
-            | Some (self : CnfRole.t) ->
-              let projection_type =
-                TxO
-                  ( tx_ctxt.implicit_constraints
-                  , CnfUserset.exclude_role rcvrs abstract_self
-                  , rcv_set )
-              in
-              project ctxt event' ~self ~projection_type ~local_bindings
-          end
-        in
-        Option.fold
-          (CnfRole.resolve_role_intersection tx_ctxt.role rx_ctxt.role)
-          ~none:(try_tx_only_project tx_ctxt.role)
-          ~some:(fun _ ->
-            let tx_role = filter_out_abstract_self_marker tx_ctxt.role
-            and rx_role = filter_out_abstract_self_marker rx_ctxt.role in
-            (* *)
-            if is_user tx_role then
-              if is_user rx_role then begin
-                (* two users and there is a potential intersection - the 
-            instantiation constraint should prevent full unification - msg from
-            @self to @self makes no sense - maybe this is something that Babel
-            should flag and prevent at @runtime? *)
-                match CnfRole.resolve_role_diff tx_role rx_role with
-                | None ->
-                  (* TODO ensure this is handled upstream (@ Projectability) *)
-                  assert false
-                | Some tx_only_role -> try_tx_only_project tx_only_role
-              end
-              else
-                (* user on lhs-only means the user is a member of the rhs-group *)
-                try_tx_only_project tx_role
-            else begin
-              match CnfRole.resolve_role_diff tx_role rx_role with
-              | None ->
-                (* tx-group contained in rx_role - will be caught by a dual instead *)
-                []
-              | Some tx_only_role -> try_tx_only_project tx_only_role
-            end) *)
-      (* *)
-      (* and rx_only_res =
-        let project_rx_self rx_only_role =
-          Option.fold
-            (resolve_unify_self rx_only_role)
-            ~none:[]
-            ~some:(fun (self : CnfRole.t) ->
-              let projection_type =
-                let initrs =
-                  if is_user rx_only_role then
-                    CnfUserset.exclude_role
-                      initrs
-                      (filter_out_abstract_self_marker self)
-                    (* CnfUserset.exclude_role initrs self *)
-                  else initrs
-                in
-                RxO
-                  ( rx_ctxt.implicit_constraints
-                  , exclude_abstract_self initrs
-                  , init_set )
-              in
-              project ctxt event' ~self ~projection_type ~local_bindings)
-        in
-        Option.fold
-          (CnfRole.resolve_role_diff rx_ctxt.role tx_ctxt.role)
-          ~none:
-            (if is_user rx_ctxt.role then project_rx_self rx_ctxt.role else [])
-          ~some:(fun diff_role -> project_rx_self diff_role) *)
-      (*  *)
-      (*  *)
+     
       and tx_rx_res =
         Option.fold
           (CnfRole.resolve_role_intersection tx_ctxt.role rx_ctxt.role)
@@ -1963,7 +1822,6 @@ and project_events ctxt (events : Choreo.event' list) : ProjectionContext.t =
 
       ProjectionContext.include_projected_event event_id projections ctxt
     | Some tx_ctxt, None ->
-      
       (* TODO [refactor] *)
       (* TODO join tx_ctxt's defined implicits to the mapping  *)
       let rcv_set =
@@ -2012,7 +1870,6 @@ and project_events ctxt (events : Choreo.event' list) : ProjectionContext.t =
       in
       ProjectionContext.include_projected_event event_id projections ctxt
     | None, Some rx_ctxt ->
-
       (* TODO [refactor] *)
       let init_set =
         (* Tx => @self leads local bindings *)
@@ -2036,7 +1893,7 @@ and project_events ctxt (events : Choreo.event' list) : ProjectionContext.t =
         in
         rewrite rx_lead_local_bindings communication_ctxt.initiators
       in
-      
+
       (* let init_set =
         List.map
           (rewrite_userset
@@ -2417,7 +2274,6 @@ and to_endpoint_relation (ctxt : ProjectionContext.t)
       Endpoint.SpawnRelation { graph; trigger_id }
     and guard_opt = None in
     { uid; src; guard_opt; relation_type; instantiation_constraint_opt }
-
 
 let rec project (program : Choreo.program)
     (ifc_constraints_by_uid : expr' StringMap.t) : Endpoint.endpoint list =
