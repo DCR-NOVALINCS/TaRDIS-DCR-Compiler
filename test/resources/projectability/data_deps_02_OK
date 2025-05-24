@@ -8,5 +8,5 @@ Public flows P
 
 // ACCEPT [data-dependency OK] every potential @Initiator(e1) sees a single
 // e0 (Tx) event - no ambiguity
-(e0:E0) (Public) [?] [CO(#cid as X) -> P(#id; cid=X)]
+(e0:E0) (Public) [1] [CO(#cid as X) -> P(#id; cid=X)]
 (e1:E1) (Public) [e0.value] [CO(#cid as Y) -> P(#id; cid=Y)]

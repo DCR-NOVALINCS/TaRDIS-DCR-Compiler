@@ -1,0 +1,15 @@
+CO(cid:Integer)
+P(id:String; cid:Integer)
+Public
+;
+Public flows CO
+Public flows P
+;
+
+// [REJECT] only the CO with cid=X is guaranteed to have observed e0 in e1 - 
+// receivers of e1 falling out of scope
+(e0:E0) (Public) [1] [CO(#cid as X) -> P(id=*; cid=X)]
+;
+e0 -->> {
+  (e1:E1) (Public) [?] [@Receiver(e0) -> CO(cid=*)]  
+}

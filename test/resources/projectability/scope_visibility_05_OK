@@ -1,0 +1,15 @@
+CO(cid:Integer)
+P(id:String; cid:Integer)
+Public
+;
+Public flows CO
+Public flows P
+;
+
+// [ACCEPT] - initiator of e1 is statically guaranteed to be the initiator 
+// of e0 - everyone in scope
+(e0:E0) (Public) [?] [CO(#cid as X) -> P(id=*; cid=X)]
+;
+e0 -->> {
+  (e1:E1) (Public) [?] [CO(cid=X) -> P(id=*; cid=X)]
+}

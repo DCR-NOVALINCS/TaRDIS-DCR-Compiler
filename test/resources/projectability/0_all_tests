@@ -1,0 +1,227 @@
+// This file exists only to collect all the tests in a single view, in order
+// to better identify the rationale behind the tests (and to potentially 
+// facilitate spotting opportunities for additional tests).
+
+// ============================================================================
+// Projectability tests:
+//  
+// Mainly looking to test whether
+//  > initiators have visibility to the events in which data they depend on;
+//  > event participants are always in scope
+//  > events include the proper participants given the dependencies induced by
+//  relations
+// 
+// obs: tests are currently based on value-based dependencies, since type-based
+//  references are still missing a few details.
+// ============================================================================
+
+// ----------------------------------------------------------------------------
+// Data-dependencies between top-level events
+// ----------------------------------------------------------------------------
+
+// == [data_deps_05_OK] ==
+// [ACCEPT] every P sees e0 and therefore, in particular,
+// so does every P with id=1 and every P with cid=1
+(e0:E0) (Public) [1] [CO(cid=1) -> P(id=*; cid=*)]
+(e1:E1) (Public) [e0.value] [P(id='1'; #cid) -> P(id=*; cid=1)]
+
+// == [data_deps_01_OK] ==
+// [ACCEPT] every potential @Initiator(e1) sees a single
+// e0 (Rx) event - no ambiguity
+(e0:E0) (Public) [1] [CO(#cid as X) -> P(#id; cid=X), CO(#cid)]
+(e1:E1) (Public) [e0.value] [P(#id; #cid as Y) -> P(#id; cid=Y)]
+
+// == [data_deps_02_OK] ==
+// [ACCEPT] every potential @Initiator(e1) sees a single
+// e0 (Tx) event - no ambiguity
+(e0:E0) (Public) [1] [CO(#cid as X) -> P(#id; cid=X)]
+(e1:E1) (Public) [e0.value] [CO(#cid as Y) -> P(#id; cid=Y)]
+
+// == [data_deps_03_FAIL] ==
+// [REJECT] initiators of e1 observe e1 as a dual event (Tx + Rx), making the 
+// data-dependency ambiguous
+(e0:E0) (Public) [1] [CO(#cid as X) -> P(#id; cid=X), CO(#cid)]
+(e1:E1) (Public) [e0.value] [CO(#cid as X)]
+
+// == data_deps_04_FAIL ==
+// [REJECT] not every every initiatior of e1 is guaranteed to observe e0
+(e0:E0) (Public) [1] [CO(#cid) -> P(#id; cid=3), CO(#cid)]
+(e1:E1) (Public) [e0.value] [P(#id; #cid) -> P(#id; cid=3)]
+
+
+// ----------------------------------------------------------------------------
+// Data-dependencies including spawns
+// ----------------------------------------------------------------------------
+
+
+// [REJECT] receiver may be CO, and therefore seing e0 as a dual event 
+// (ambiguous dependency)
+(e0:E0) (Public) [1] [CO(#cid as X) -> P(id=*; cid=X), CO(cid=*)]
+;
+e0 -->> {
+  (e1:E1) (Public) [e0.value] [@Receiver(e0) -> @Initiator(e0)]
+}
+
+
+
+// ----------------------------------------------------------------------------
+// Participants with visibility within nested scopes
+// ----------------------------------------------------------------------------
+
+
+// == [scope_visibility_01_FAIL] ==
+// [REJECT] only one CO is ensured to be in scope with each e1: initiator-set
+// exceeds scope
+(e0:E0) (Public) [?] [CO(#cid as X) -> P(id=*; cid=X)]
+;
+e0 -->> {
+  (e1:E1) (Public) [?] [CO(#cid) -> P(id=*; cid=X)]
+}
+
+// == [scope_visibility_02_FAIL] ==
+// [REJECT] only one CO is ensured to be in scope with each e1 but there is no 
+// guarantee that it is always CO(cid=3) - use binding instead
+(e0:E0) (Public) [?] [CO(#cid as X) -> P(id=*; cid=X)]
+;
+e0 -->> {
+  (e1:E1) (Public) [?] [CO(cid = 3) -> P(id=*; cid=X)]
+}
+
+// == [scope_visibility_03_FAIL] ==
+// [REJECT] only one CO is ensured to be in scope with each e1 but cannot 
+// statically guarantee that it coincides with the one being passed via 
+// @trigger - use binding instead
+(e0:E0) (Public) [1] [CO(#cid as X) -> P(id=*; cid=X)]
+;
+e0 -->> {
+  (e1:E1) (Public) [?] [CO(cid=@trigger.value) -> P(id=*; cid=X)]  
+}
+
+// == [scope_visibility_04_FAIL] ==
+// [REJECT] only P s with cid=X are guaranteed to have observed e0 in e1 - 
+// unable to statically guarantee X=@trigger.value - use binding instead
+(e0:E0) (Public) [1] [CO(#cid as X) -> P(id=*; cid=X)]
+;
+e0 -->> {
+  (e1:E1) (Public) [?] [P(#id; cid=@trigger.value) -> P(id=*; cid=X)]  
+}
+
+
+// == [scope_visibility_13_FAIL] ==
+// [REJECT] only P s with cid=X are guaranteed to have observed e0 in e1 - 
+// receivers of e1 falling out of scope
+(e0:E0) (Public) [1] [CO(#cid as X) -> P(id=*; cid=X)]
+;
+e0 -->> {
+  (e1:E1) (Public) [?] [@Receiver(e0) -> P(id=*; cid=*)]  
+}
+
+// == [scope_visibility_14_FAIL] ==
+// [REJECT] only the CO with cid=X is guaranteed to have observed e0 in e1 - 
+// receivers of e1 falling out of scope
+(e0:E0) (Public) [1] [CO(#cid as X) -> P(id=*; cid=X)]
+;
+e0 -->> {
+  (e1:E1) (Public) [?] [@Receiver(e0) -> CO(cid=*)]  
+}
+
+
+// == [scope_visibility_12_FAIL] ==
+// [REJECT] only P(id=4, cid=X) observes e0, and therefore the initiator
+// of e1 cannot be in scope
+(e0:E0) (Public) [?] [CO(#cid as X) -> P(id='4'; cid=X)]
+;
+e0 -->> {
+  (e1:E1) (Public) [?] [P(id='3'; cid=X) -> @Initiator(e0)]
+}
+
+// == [scope_visibility_05_OK] ==
+// [ACCEPT] - initiator of e1 is statically guaranteed to be the initiator 
+// of e0 - everyone in scope
+(e0:E0) (Public) [?] [CO(#cid as X) -> P(id=*; cid=X)]
+;
+e0 -->> {
+  (e1:E1) (Public) [?] [CO(cid=X) -> P(id=*; cid=X)]
+}
+
+// == [scope_visibility_06_OK] ==
+// [ACCEPT] initiator of e1 is the initiator of e0 - everyone in scope
+(e0:E0) (Public) [?] [CO(#cid as X) -> P(id=*; cid=X)]
+;
+e0 -->> {
+  (e1:E1) (Public) [?] [CO(cid=X) -> P(id=*; cid=X)]
+}
+
+// == [scope_visibility_07_OK] ==
+// [ACCEPT] every P in cid=X observes e0, therefore, any such receiver
+// can reply (instantiation constraints will control the participants 
+// that actually instantiate e1 at runtime)
+(e0:E0) (Public) [?] [CO(#cid as X) -> P(id=*; cid=X)]
+;
+e0 -->> {
+  (e1:E1) (Public) [?] [P(id='3'; cid=X) -> P(id=*; cid=X)]
+}
+
+
+// == [scope_visibility_10_OK] ==
+// [ACCEPT] every P in cid=X observes e0, therefore, any P is able to
+// carry on with communication in e1
+(e0:E0) (Public) ['1'] [CO(#cid as X) -> P(id=*; cid=X)]
+;
+e0 -->> {
+  (e1:E1) (Public) [?] [P(id=@trigger.value; cid=X) -> P(id=*; cid=X)]  
+}
+
+// == [scope_visibility_11_OK] ==
+// [ACCEPT] every P in cid=X observes e0, therefore, any two specific 
+// P s are able to carry on with communication in e1
+// (instantiation constraints take care of the rest)
+(e0:E0) (Public) ['1'] [CO(#cid as X) -> P(id=*; cid=X)]
+;
+e0 -->> {
+  (e1:E1) (Public) [?] [P(id=@trigger.value; cid=X) -> P(id='3'; cid=X)]  
+}
+
+
+// == [scope_visibility_08_OK] ==
+// [ACCEPT] every P in cid=X observes e0, therefore, any such P can 
+// further interact with the remaining receivers in response 
+// (instantiation constraints take care of the rest)
+(e0:E0) (Public) [?] [CO(#cid as X) -> P(id=*; cid=X)]
+;
+e0 -->> {
+  (e1:E1) (Public) [?] [P(#id; cid=X) -> P(id=*; cid=X)]
+}
+
+// == [scope_visibility_09_OK] ==
+// [ACCEPT] every P receives, therefore, any P can continue 
+// communication, and further segment it in groups 
+// (instantiation constraints take care of the rest)
+(e0:E0) (Public) [?] [CO(#cid) -> P(id=*; cid=*)]
+;
+e0 -->> {
+  (e1:E1) (Public) [?] [P(#id; #cid as X) -> P(id=*; cid=X)]
+}
+
+// == [scope_visibility_15_OK] ==
+// [ACCEPT] basic one-to-one pattern - always OK
+(e0:E0) (Public) [?] [CO(#cid as X) -> P(#id; cid=X)]
+;
+e0 -->> {
+  (e1:E1) (Public) [?] [@Receiver(e0) -> @Initiator(e0)]
+  (e2:E2) (Public) [?] [@Initiator(e0) -> @Receiver(e0)]
+}
+
+
+// TODO
+// detecting "talking to one@self" events
+
+
+// == [*_FAIL] ==
+// [ACCEPT] every P in cid=X observes e0, therefore, any two specific 
+// P s are able to carry on with communication in e1
+// (e0:E0) (Public) ['1'] [CO(#cid as X) -> P(id=*; cid=X)]
+// ;
+// e0 -->> {
+//   (e1:E1) (Public) [?] [P(id=@trigger.value; cid=X) -> P(id='3'; cid=X)]  
+// }

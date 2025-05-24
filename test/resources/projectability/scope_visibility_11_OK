@@ -1,0 +1,16 @@
+CO(cid:Integer)
+P(id:String; cid:Integer)
+Public
+;
+Public flows CO
+Public flows P
+;
+
+// [ACCEPT] every P in cid=X observes e0, therefore, any two specific 
+// P s are able to carry on with communication in e1
+// (instantiation constraints take care of the rest)
+(e0:E0) (Public) ['1'] [CO(#cid as X) -> P(id=*; cid=X)]
+;
+e0 -->> {
+  (e1:E1) (Public) [?] [P(id=@trigger.value; cid=X) -> P(id='3'; cid=X)]  
+}

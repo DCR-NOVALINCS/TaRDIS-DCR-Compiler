@@ -889,7 +889,8 @@ end = struct
                     roles_ctxts
                 else (
                   print_endline
-                    "Currently not supporting multiple role instances when using bindings";
+                    "Currently not supporting multiple role instances when \
+                     using bindings";
                   assert false))
             role_ctxts
             roles ))
@@ -1598,7 +1599,7 @@ and project_events ctxt (events : Choreo.event' list) : ProjectionContext.t =
                 if is_user r_role then begin
                   (* two users and there is a potential intersection - the 
                   instantiation constraint should prevent full unification (msg from
-                  @self to @self makes no sense). Maybe Babel should also flag and
+                  @self to @self makes no sense). Babel is also expected to flag and
                    prevent this at @runtime when values are known (?) *)
                   match CnfRole.resolve_role_diff l_role r_role with
                   | None ->
@@ -1622,7 +1623,6 @@ and project_events ctxt (events : Choreo.event' list) : ProjectionContext.t =
         ( single_direction_project ~tx:true tx_ctxt rx_ctxt rcvrs rcv_set
         , (* and rx_only_res = *)
           single_direction_project ~tx:false rx_ctxt tx_ctxt initrs init_set )
-     
       and tx_rx_res =
         Option.fold
           (CnfRole.resolve_role_intersection tx_ctxt.role rx_ctxt.role)
@@ -1901,7 +1901,24 @@ and project_events ctxt (events : Choreo.event' list) : ProjectionContext.t =
              |> StringMap.map (fun e -> snd e)))
           communication_ctxt.initiators
       in *)
-      let self =
+      (* print_newline ();
+      print_endline @@ CnfRole.to_string self;
+      print_endline @@ RoleCtxt.to_string rx_ctxt; *)
+
+      begin
+        match resolve_unify_self rx_ctxt.role with
+        | None -> ctxt
+        | Some (self : CnfRole.t) ->
+          let projection_type =RxO (rx_ctxt.implicit_constraints, initrs, init_set)
+        in
+        let rx_event =
+          project ctxt event' ~self ~projection_type ~local_bindings
+        in
+        ProjectionContext.include_projected_event event_id rx_event ctxt
+      end
+
+      
+      (* let self =
         { self with
           encoding =
             Option.get
@@ -1914,7 +1931,7 @@ and project_events ctxt (events : Choreo.event' list) : ProjectionContext.t =
       let rx_event =
         project ctxt event' ~self ~projection_type ~local_bindings
       in
-      ProjectionContext.include_projected_event event_id rx_event ctxt
+      ProjectionContext.include_projected_event event_id rx_event ctxt *)
     | None, None -> ctxt
     (* in
     { ctxt_res with trigger_ctxt } *)

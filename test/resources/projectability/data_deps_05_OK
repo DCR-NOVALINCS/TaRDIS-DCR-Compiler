@@ -1,0 +1,12 @@
+CO(cid:Integer)
+P(id:String; cid:Integer)
+Public
+;
+Public flows CO
+Public flows P
+;
+
+// ACCEPT [data-dependency OK] every P sees e0 and therefore, in particular,
+// so does every P with id=1 and every P with cid=1
+(e0:E0) (Public) [1] [CO(cid=1) -> P(id=*; cid=*)]
+(e1:E1) (Public) [e0.value] [P(id='1'; #cid) -> P(id=*; cid=1)]
