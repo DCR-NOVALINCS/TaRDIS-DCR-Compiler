@@ -1904,20 +1904,18 @@ and project_events ctxt (events : Choreo.event' list) : ProjectionContext.t =
       (* print_newline ();
       print_endline @@ CnfRole.to_string self;
       print_endline @@ RoleCtxt.to_string rx_ctxt; *)
-
       begin
         match resolve_unify_self rx_ctxt.role with
         | None -> ctxt
         | Some (self : CnfRole.t) ->
-          let projection_type =RxO (rx_ctxt.implicit_constraints, initrs, init_set)
-        in
-        let rx_event =
-          project ctxt event' ~self ~projection_type ~local_bindings
-        in
-        ProjectionContext.include_projected_event event_id rx_event ctxt
+          let projection_type =
+            RxO (rx_ctxt.implicit_constraints, initrs, init_set)
+          in
+          let rx_event =
+            project ctxt event' ~self ~projection_type ~local_bindings
+          in
+          ProjectionContext.include_projected_event event_id rx_event ctxt
       end
-
-      
       (* let self =
         { self with
           encoding =
@@ -1999,8 +1997,15 @@ and project_relations (ctxt : ProjectionContext.t)
                 , projection ) )
           in
           let ctxt = ProjectionContext.end_scope ctxt in
-          let ctxt = ProjectionContext.add_relation ctxt spawn_relation in
-          ctxt)
+          (* TODO must re-test - keeing previous code below for now *)
+          match spawn_relation with
+          | _, SpawnRelation (_, _, _, projection) -> 
+            if (List.is_empty projection.events && List.is_empty projection.relations) then ctxt else 
+              ProjectionContext.add_relation ctxt spawn_relation
+          | _, _ -> ctxt
+          (* let ctxt = ProjectionContext.add_relation ctxt spawn_relation in
+          ctxt *)
+          )
         ctxt
         (Option.fold ~none:[] ~some:Fun.id src)
     end
