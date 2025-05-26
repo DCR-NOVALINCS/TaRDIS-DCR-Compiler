@@ -20,7 +20,7 @@ accounting -->% accounting
 r4c -->% csm
 
 r4c -->> {
-  (reply: reply) (CO(cid:Bot), P(id:Bot; cid:Bot)) [?] [@Receiver(r4c) -> @Initiator(r4c)]
+  (reply: reply) (CO(cid:Bot), P(id:Bot; cid:Bot)) [?:Integer] [@Receiver(r4c) -> @Initiator(r4c)]
   ;
   reply -->% reply
   reply *--> accounting
@@ -28,11 +28,11 @@ r4c -->> {
 }
 
 csm -->> {
-  (reply: reply) (P(id:Bot; cid:@trigger.value.cid)) [?] [@Receiver(csm) -> @Initiator(csm)]
+  (reply: reply) (P(id:Bot; cid:@trigger.value.cid)) [?:Integer] [@Receiver(csm) -> @Initiator(csm)]
   ;
   reply -->% reply
   reply -->> {
-    (accept: accept) (P(id:Bot; cid:@trigger$csm.value.cid)) [?] [@Initiator(csm) -> @Receiver(csm)]
+    (accept: accept) (P(id:Bot; cid:@trigger.value)) [?] [@Initiator(csm) -> @Receiver(csm)]
     (reject: reject) (P(id:Bot; cid:@trigger$csm.value.cid)) [?] [@Initiator(csm) -> @Receiver(csm)]
     ;
     accept, reject -->% accept, reject
