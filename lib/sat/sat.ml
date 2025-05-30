@@ -56,16 +56,6 @@ type param_value =
   | IntLit of int
   | StringLit of string
 
-(* restriction over a param_val *)
-(* and param_val_constraint =
-  (* same as '*' *)
-  | Unconstrained
-  (* determined constant value *)
-  | Determined of param_value
-  (* Excludes some constant values *)
-  | Excludes of param_value list
-  (* Binded to a symbolic constant which is known only at runtime *)
-  | Binded of identifier *)
 and cnf_bool_constraint =
   | CnfSymEq of identifier * identifier
   | CnfEq of identifier * param_value
@@ -74,20 +64,9 @@ and literal =
   | Positive of cnf_bool_constraint
   | Negative of cnf_bool_constraint
 
-(* we can consider a restricted type of formulas, given the way we'll be
-   building them *)
-and formula =
-  | Literal of literal
-  | Disjunction of formula * formula
-  | Conjunction of formula * formula
-
-(* TODO renaming -> normal_form: then use the same representation
-   for both CNF and DNF and distinguish according to name / context*)
 and cnf_clause = literal list
 
 and cnf_formula = cnf_clause list
-
-(* let counter = ref 0 *)
 
 (** [list_combine f [a1; ...; an] [b1; ...; bm]] returns the list
     [[f a1 b1; f a1 b2; ...; f an bm]], resulting from applying function [f] to
@@ -101,14 +80,6 @@ let rec unparse_param_val = function
   | BoolLit bool_val -> string_of_bool bool_val
   | IntLit int_val -> string_of_int int_val
   | StringLit str_val -> str_val
-
-(* and unparse_param_val_constraint = function
-  | Unconstrained -> "*"
-  | Determined value -> unparse_param_val value
-  | Excludes exclude_list ->
-    List.map (fun x -> Printf.sprintf "!=%s" (unparse_param_val x)) exclude_list
-    |> String.concat ", "
-  | Binded symbol -> symbol *)
 
 and unparse_cnf_constraint = function
   | CnfSymEq (id1, id2) -> Printf.sprintf "(%s = %s)" id1 id2
@@ -135,15 +106,6 @@ and param_val_compare param1 param2 =
   | BoolLit _, StringLit _ -> -1
   | IntLit _, StringLit _ -> -1
   | _ -> 1
-
-(* and cnf_constraint_compare constr1 constr2 =
-  match (constr1, constr2) with
-  | CnfSymEq (id1, id2), CnfSymEq (id3, id4) ->
-    if id1 = id3 then String.compare id2 id4 else String.compare id1 id3
-  | CnfEq (id1, v1), CnfEq (id2, v2) ->
-    if id1 = id2 then param_val_compare v1 v2 else String.compare id1 id2
-  | CnfSymEq _, CnfEq _ -> -1
-  | CnfEq _, CnfSymEq _ -> 1 *)
 
 and cnf_constraint_compare constr1 constr2 =
   match (constr1, constr2) with
@@ -334,7 +296,6 @@ module SolutionSet = struct
         val_opt <> Some expr
     in
     let constraints = simplify sol.constraints in
-    (* print_endline @@ Printf.sprintf "@sat_check: constraints= %s" (unparse_cnf_clause constraints); *)
     if List.for_all checks_out constraints then Sat sol else Unsat
 
   let init (symbols : identifier list) : t =
@@ -367,7 +328,6 @@ module SolutionSet = struct
 
   (** Takes representatives [r1] and [r2] and unifies the *)
   and unify_syms r1 r2 connected values =
-    (* DEBUGS *)
     let unify r b1 b2 lit_opt values =
       let b = (DisjointSet.find r connected, lit_opt) in
       let values = b :: List.filter (fun x -> x <> b1 && x <> b2) values in
@@ -415,7 +375,6 @@ module SolutionSet = struct
           | Negative (CnfSymEq (s1, s2)) ->
             let r1 = DisjointSet.find s1 sol.connected
             and r2 = DisjointSet.find s2 sol.connected in
-            (* if r1 = r2 then Unsat else Sat sol *)
             if r1 = r2 then Unsat else sat_check sol
           | Positive (CnfEq (s, expr)) ->
             let r = DisjointSet.find s sol.connected in
@@ -507,8 +466,7 @@ and cnf_sat_solve (cnf : cnf_formula) : cnf_formula option =
       match (pos1, neg1) with
       | Some sat1, Some sat2 -> Some (sat1 @ sat2 @ all_sat)
       | Some sat, None | None, Some sat -> Some (sat @ all_sat)
-      | _ -> if List.is_empty all_sat then None else Some all_sat
-      (* Some all_sat *))
+      | _ -> if List.is_empty all_sat then None else Some all_sat)
   in
   let cnf = cnf_simplify cnf in
   let sol = extract_cnf_symbols cnf |> SolutionSet.init in
@@ -521,7 +479,6 @@ and cnf_sat_solve (cnf : cnf_formula) : cnf_formula option =
              | SolutionSet.Sat sol -> Some sol.constraints)
            lst
         |> (fun lst -> lst)
-        (* |> cnf_simplify *)
         |> dnf_to_cnf
         |> List.sort cnf_clause_compare))
 
@@ -581,7 +538,6 @@ and cnf_all_sat_solve (cnf : cnf_formula) : cnf_formula list =
   in
 
   (* TODO chain calls *)
-  (* TODO maybe use sort_unique here or ensure any CNF already entails no duplicates *)
   (* let cnf =
        List.sort cnf_clause_compare cnf
        |> cnf_simplify
@@ -592,36 +548,21 @@ and cnf_all_sat_solve (cnf : cnf_formula) : cnf_formula list =
   let cnf = List.sort cnf_clause_compare cnf in
   let sol = extract_cnf_symbols cnf |> SolutionSet.init in
 
-  (* print_string "---\n\n\n\n\n  @cnf_sat_solve [on entry]:\n   ";
-  print_endline (unparse_cnf_formula cnf);
-  print_endline "=========================================\n\n\n\n"; *)
   Option.fold
     (dpll_all_sat ([], sol) cnf)
     ~none:[]
     ~some:(fun lst ->
-      (* List.iter (fun sol -> print_endline @@ SolutionSet.to_string sol) lst; *)
       List.filter_map
         (function
           | SolutionSet.Unsat -> None
           | SolutionSet.Sat sol -> Some sol.constraints)
         lst
-      (* |> List.map SolutionSet.simplify *)
       |> List.fold_left
            (fun acc lst -> List.map (fun lit -> [ lit ]) lst :: acc)
            []
-      (* |> List.map (List.sort_uniq cnf_clause_compare) *)
-      |> List.map cnf_simplify
-      (* |> List.map cnf_factorize *))
+      |> List.map cnf_simplify)
 
 and cnf_entails (cnf_formula : cnf_formula) (cnf_clause : cnf_clause) =
-  (* print_endline @@ Printf.sprintf "@cnf_entails - kb: %s" (unparse_cnf_formula cnf_formula);
-  print_endline @@ Printf.sprintf "@cnf_entails - clause: %s" (unparse_cnf_formula [cnf_clause]);
-  let negated = cnf_neg [cnf_clause] in
-  print_endline @@ Printf.sprintf "@cnf_entails - negated clause: %s" (unparse_cnf_formula negated);
-  let res = List.is_empty @@ cnf_all_sat_solve @@ cnf_and cnf_formula @@ cnf_neg [cnf_clause]
-in 
-print_endline @@ Printf.sprintf "entails is %b" res;
-res *)
   List.is_empty @@ cnf_all_sat_solve @@ cnf_and cnf_formula
   @@ cnf_neg [ cnf_clause ]
 
@@ -652,7 +593,6 @@ and dnf_factorize ?(acc = []) (cnf : cnf_formula) =
   match List.sort_uniq List.compare_lengths cnf with
   | [] -> acc
   | [] :: xs -> dnf_factorize ~acc xs
-  (* | hd :: [] -> if List.length acc > 0 then list_combine (fun x1 x2 -> x1::x2) hd acc else [hd] *)
   | (_ :: _ as hd) :: _ -> begin
     match find_common_opt cnf hd with
     | None -> acc @ cnf
@@ -668,43 +608,3 @@ and cnf_neg (cnf : cnf_formula) : cnf_formula =
   else
     dnf_to_cnf
     @@ List.fold_left (fun acc lst -> List.map negate lst :: acc) [] cnf
-
-(** [cnf_of formula] results the result of converting [formula] into CNF. *)
-(* and cnf_of (formula : formula) =
-  let rec cnf_of formula : cnf_formula =
-    match formula with
-    | Literal lit -> [ [ lit ] ]
-    | Disjunction (left, right) -> begin
-      match (left, right) with
-      | Literal l, Literal r -> [ [ l; r ] ]
-      | Literal v, Disjunction (l, r) | Disjunction (l, r), Literal v ->
-        let l_cnf = cnf_of l
-        and r_cnf = cnf_of r in
-        cnf_or [ [ v ] ] (cnf_or l_cnf r_cnf)
-      | Literal v, Conjunction (l, r) | Conjunction (l, r), Literal v ->
-        let l_cnf = cnf_of l
-        and r_cnf = cnf_of r in
-        cnf_or [ [ v ] ] (l_cnf @ r_cnf)
-      | _ ->
-        let l_cnf = cnf_of left
-        and r_cnf = cnf_of right in
-        cnf_or l_cnf r_cnf
-    end
-    | Conjunction (left, right) -> begin
-      match (left, right) with
-      | Literal l, Literal r -> [ [ l ]; [ r ] ]
-      | Literal v, Disjunction (l, r) | Disjunction (l, r), Literal v ->
-        let l_cnf = cnf_of l
-        and r_cnf = cnf_of r in
-        [ v ] :: cnf_or l_cnf r_cnf
-      | Literal v, Conjunction (l, r) | Conjunction (l, r), Literal v ->
-        let l_cnf = cnf_of l
-        and r_cnf = cnf_of r in
-        ([ v ] :: l_cnf) @ r_cnf
-      | _ ->
-        let l_cnf = cnf_of left
-        and r_cnf = cnf_of right in
-        l_cnf @ r_cnf
-    end
-  in
-  cnf_of formula |> cnf_simplify *)

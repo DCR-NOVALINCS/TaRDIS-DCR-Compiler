@@ -16,9 +16,6 @@ and type_info =
   ; is_const : bool
   }
 
-(* AST nodes are annotated *)
-
-(* generic identifier *)
 and identifier' = identifier annotated
 
 and identifier = string
@@ -30,19 +27,17 @@ and element_uid = identifier
     Values, Computation Expressions and Type Epxressions
     =============================================================================
   *)
+and record_field_val' = value' named_param'
 
-  and record_field_val' = value' named_param'
-  
-  and value' = value annotated
+and value' = value annotated
 
-  and value =
-    | BoolVal of bool
-    | IntVal of int
-    | StringVal of string
-    | RecordVal of record_field_val' list
+and value =
+  | BoolVal of bool
+  | IntVal of int
+  | StringVal of string
+  | RecordVal of record_field_val' list
 
-
-  and type_expr' = type_expr annotated
+and type_expr' = type_expr annotated
 
 and event_ty = identifier
 
@@ -63,19 +58,19 @@ and record_field_ty' = type_expr' named_param'
 
 and expr' = expr annotated
 
-  and expr =
-    | True
-    | False
-    | IntLit of int
-    | StringLit of string
-    | EventRef of identifier'
-    | Trigger of string
-    | Record of record_field' list
-    | PropDeref of expr' * property_name'
-    | BinaryOp of expr' * expr' * binary_op_type
-    | UnaryOp of expr' * unary_op_type
-    | Parenthesized of expr'
-    | List of expr' list
+and expr =
+  | True
+  | False
+  | IntLit of int
+  | StringLit of string
+  | EventRef of identifier'
+  | Trigger of string
+  | Record of record_field' list
+  | PropDeref of expr' * property_name'
+  | BinaryOp of expr' * expr' * binary_op_type
+  | UnaryOp of expr' * unary_op_type
+  | Parenthesized of expr'
+  | List of expr' list
 
 and binary_op' = binary_op annotated
 
@@ -120,7 +115,7 @@ and role_label' = role_label annotated
 
 and role_label = identifier
 
-(* generic type for "value-dependent label" expressions *)
+(* generic "value-dependent label" expressions *)
 and 'a parameterisable_role' = 'a parameterisable_role annotated
 
 and 'a parameterisable_role = role_label' * 'a named_param' list
@@ -131,7 +126,7 @@ and 'a parameterisable_role = role_label' * 'a named_param' list
     Program
     =============================================================================
     =============================================================================
-  *)
+*)
 and program =
   { roles : value_dep_role_decl' list
   ; security_lattice : flow_relation' list
@@ -146,7 +141,7 @@ and spawn_program =
 (*
     program.roles 
     --------------------------------------
-  *)
+*)
 and value_dep_role_decl' = value_dep_role_decl annotated
 
 and value_dep_role_decl = type_expr' parameterisable_role
@@ -154,7 +149,7 @@ and value_dep_role_decl = type_expr' parameterisable_role
 (*
     program.security_lattice
     --------------------------------------
-  *)
+*)
 and flow_relation' = flow_relation annotated
 
 and flow_relation = role_label' * role_label'
@@ -162,7 +157,7 @@ and flow_relation = role_label' * role_label'
 (*
     program.events
     --------------------------------------
-  *)
+*)
 and event' = event annotated
 
 and event =
@@ -176,7 +171,7 @@ and event =
 (*
     program.relations
     --------------------------------------
-  *)
+*)
 and relation' = relation annotated
 
 and relation =
@@ -187,7 +182,7 @@ and relation =
     =============================================================================
     Event
     =============================================================================
-  *)
+*)
 and event_id' = event_id annotated
 
 and event_id = identifier
@@ -199,7 +194,7 @@ and event_label = identifier
 (*
     event.info
     --------------------------------------
-  *)
+*)
 and event_info' = event_info annotated
 
 and event_info = event_id' * event_label'
@@ -208,7 +203,7 @@ and event_info = event_id' * event_label'
     --------------------------------------
     event.security_level
     --------------------------------------
-  *)
+*)
 and parametrisable_label_decls' = parametrisable_label_decls annotated
 
 and parametrisable_label_decls = expr' list
@@ -217,9 +212,7 @@ and sec_label_param' = sec_label_param annotated
 
 and sec_label_param =
   | Top
-  (* e.g., Buyer(Bot) *)
   | Bot
-  (* e.g., Buyer(id) *)
   | Parameterised of expr'
 
 and sec_label' = sec_label_param' parameterisable_role'
@@ -258,6 +251,7 @@ and user_set_expr =
   | RoleExpr of userset_role_expr'
   | Initiator of event_id'
   | Receiver of event_id'
+(* TODO introduce Diff in participant expressions *)
 (* | Diff of user_set_expr' list * user_set_expr' list *)
 
 and participants' = participants annotated
@@ -272,11 +266,11 @@ and participants =
   *)
 and event_marking' = event_marking annotated
 
-  and event_marking =
-    { is_pending' : bool annotated
-    ; is_included' : bool annotated
-    ; default_val_opt : value' option
-    }
+and event_marking =
+  { is_pending' : bool annotated
+  ; is_included' : bool annotated
+  ; default_val_opt : value' option
+  }
 
 (*
     =============================================================================
@@ -292,22 +286,20 @@ and relation_type =
   | Milestone
   | Response
 
-  let reserved_trigger_sym = "@trigger"
+(* TODO [revisit constant] this is concrete syntax - move to parser/lexer *)
+let reserved_trigger_sym = "@trigger"
 
-  let hidden_event_prefix = "_"
+let hidden_event_prefix = "_"
 
-  let trigger_id_of_event_id event_id =
-    (* Printf.sprintf "_@trigger$%s" event_id *)
-    Printf.sprintf "%s%s$%s" hidden_event_prefix reserved_trigger_sym event_id
+let trigger_id_of_event_id event_id =
+  Printf.sprintf "%s%s$%s" hidden_event_prefix reserved_trigger_sym event_id
 
-  (* TODO move somewhere else - debug/log/print *)
-  let string_of_pos (pos : Lexing.position) =
-    "line "
-    ^ string_of_int pos.Lexing.pos_lnum
-    ^ ", character "
-    ^ string_of_int (pos.Lexing.pos_cnum - pos.Lexing.pos_bol + 1)
+let string_of_pos (pos : Lexing.position) =
+  "line "
+  ^ string_of_int pos.Lexing.pos_lnum
+  ^ ", character "
+  ^ string_of_int (pos.Lexing.pos_cnum - pos.Lexing.pos_bol + 1)
 
-(* TODO move somewhere else - debug/log/print *)
 let string_of_loc loc =
   begin
     match loc with

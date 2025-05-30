@@ -326,7 +326,7 @@ plain_type_expr:
 | INTTY                                                                                   { IntTy    }
 | BOOLTY                                                                                  { BoolTy   }
 | plain_id                                                                                { EventTy($1) }
-| delimited(LBRACE, separated_nonempty_list(SEMICOLON, record_type_field), RBRACE)            { RecordTy($1) }
+| delimited(LBRACE, separated_nonempty_list(SEMICOLON, record_type_field), RBRACE)        { RecordTy($1) }
 ;
 
 record_type_field: mark_loc_ty(plain_record_type_field) {$1}

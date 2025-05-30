@@ -13,13 +13,6 @@ and literal =
   | Positive of cnf_bool_constraint
   | Negative of cnf_bool_constraint
 
-(* we can consider a restricted type of formulas, given the way we'll be
-   building them *)
-and formula =
-  | Literal of literal
-  | Disjunction of formula * formula
-  | Conjunction of formula * formula
-
 and cnf_clause = literal list
 
 and cnf_formula = cnf_clause list
