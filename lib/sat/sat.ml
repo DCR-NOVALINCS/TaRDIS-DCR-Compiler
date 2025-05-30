@@ -528,7 +528,6 @@ and cnf_sat_solve (cnf : cnf_formula) : cnf_formula option =
 (* variant of cnf_sat_solve - return every solution found
    TODO decide on merging with flag or keeping separate with fatorizations *)
 and cnf_all_sat_solve (cnf : cnf_formula) : cnf_formula list =
-  (* print_endline @@ Printf.sprintf "cnf_all_sat_solve called with %s" (unparse_cnf_formula cnf); *)
   let bind_sol some = function
     | SolutionSet.Unsat -> None
     | SolutionSet.Sat _ as sol -> some sol
