@@ -1,55 +1,20 @@
 %{
 open Syntax
 
-  (* TODO remove when participants in communications are properly handled *)
-  (* let participant_to_string role params =
-     Printf.sprintf "%s(%s)" role @@ String.concat ", " params
-     *)
-
-(*
-  let ctrl_rels_from_option opt =
-    match opt with
-    | Some rels -> rels
-    | None -> []
-    *)
-
-  (*
-  let next_uid =
-    let counter = ref 0 in
-    fun () ->
-      incr counter;
-      Printf.sprintf "uid_%d" !counter
-*)
-
-
-  
   let trigger_stack = ref []
 
   let push_trigger trigger_id =
-  print_endline trigger_id;
     trigger_stack := trigger_id :: !trigger_stack
-    (* trigger_id *)
   
   let pop_trigger () =
     trigger_stack := List.tl !trigger_stack
   
   let peek_trigger () =
-    let res = List.hd !trigger_stack in
-    print_endline @@ Printf.sprintf "peek_trigger: %s" res;
-    res
+    List.hd !trigger_stack
 
-  (* TODO change src of @trigger keyword - syntax.ml rather than lexer.mll *)
   let resolve_trigger_id trigger_sym = function
-  | Some id' -> 
-   (*Printf.sprintf "%s#%s" trigger_sym id'.data*)
-   let id = Syntax.trigger_id_of_event_id id'.data in
-  (*)  Printf.sprintf "%s#%s" trigger_sym id'.data in *)
-       print_endline @@ Printf.sprintf "renamed id: %s" id;
-       id
-  | None -> let id = List.hd !trigger_stack 
-    in
- print_endline @@ Printf.sprintf "renamed id: %s" id;
-    id
+  | Some id' -> Syntax.trigger_id_of_event_id id'.data
+  | None -> List.hd !trigger_stack
 
   let unfold_nested_ctrl_rel_decl nested_ctrl_rel =
     let ids_l, rel, ids_r = nested_ctrl_rel.data in
@@ -62,17 +27,7 @@ open Syntax
       (fun id1 -> List.map (fun id2 -> mk_ctrl_relation id1 id2)ids_r) ids_l
     |> List.concat
 
-    (*
   and unfold_nested_spawn_rel_decl nested_spawn_rel =
-    let ids_l, guard, spawn_program = nested_spawn_rel.data in
-    let mk_spawn_relation id =
-      annotate ~loc:nested_spawn_rel.loc @@ SpawnRelation (id, guard, spawn_program)
-    in
-    List.map (fun id1 -> mk_spawn_relation id1 ) ids_l
-*)
-
-  and unfold_nested_spawn_rel_decl nested_spawn_rel =
-
     let ids_l, trigger_label, guard, spawn_program = nested_spawn_rel.data in
     let mk_spawn_relation id =
       annotate ~loc:nested_spawn_rel.loc @@ SpawnRelation (id, trigger_label, guard, spawn_program)
@@ -103,44 +58,14 @@ let default_marking_pend_excl =
   ; is_included' = annotate false
   ; default_val_opt = Option.none
   }
-
-(*  TODO cleanup required here *)
-
-(* currently not being used (?) *)
-
-(*
-let bot = "Bot"
-and top = "Top"
-*)
-
-(*
-let parse_error s = 
-  print_endline s;
-  flush stdout
-*)
-
-(*
-let string_of_position p =
-	(string_of_int p.Lexing.pos_lnum) ^":" ^ (string_of_int p.Lexing.pos_cnum)
-*)
-
-(*
-let raiseError () = 
-	let p1 = (Parsing.rhs_start_pos 1) in 
-  let p2 = (Parsing.symbol_end_pos()) in
-	Parsing.clear_parser ();
-  raise (SyntaxError(string_of_position p1, string_of_position p2))
-  *)
-
 %}
 
 // declarations
 %token EOL
-// type literals
+// primitive (atomic) values
+%token TRUE FALSE
 %token <int> INT
 %token <string> STR
-// value literals
-%token TRUE FALSE
 %token <string> ID
 // primitive types
 %token STRTY INTTY BOOLTY
@@ -162,7 +87,7 @@ let raiseError () =
 %token INCLUDE EXCLUDE CONDITION RESPONSE MILESTONE SPAWN
 // (guarded) dcr relations - guard opening (left)
 %token LGUARD LGUARD_RESPONSE
-// (guarded) dcr relations - guard closing
+// (guarded) dcr relations - guard closing (right)
 %token RGUARD_INCLUDE RGUARD_EXCLUDE RGUARD_CONDITION RGUARD_RESPONSE RGUARD_MILESTONE RGUARD_SPAWN
 // information flow
 %token FLOWS TOP BOT
@@ -170,8 +95,7 @@ let raiseError () =
 %token INITIATOR RECEIVER
 // misc
 %token ALIAS HASHTAG AT QUESTION ARROW PROP_DEREF DOLLAR
-// %token PIPE // TODO revise utility
-// %token UDRSCR // TODO revise utility
+
 %nonassoc NEG
 %nonassoc PROP_DEREF 
 
@@ -179,15 +103,12 @@ let raiseError () =
 
 %type <program> main
 
-%% /* rules */ 
+%% /* begin rules */ 
 
 main:
   plain_program EOL                                                                               { $1 }
 ;
 
-
-// program: mark_loc_ty(plain_program) {$1}
-      // let {events; relations} = spawn_prog in
 plain_program:
     roles = terminated(plain_value_dep_role_decls, SEMICOLON);
     security_lattice = terminated(plain_flow_decl_list, SEMICOLON);
@@ -200,35 +121,20 @@ plain_program:
     }
 ;
 
-
-// value_dependent_roles : type_expr parameterisable_label list
 plain_value_dep_role_decls:
 |  decls=nonempty_list(value_dep_role_decl)    {decls}
 ;
 
-// <id> [ '(' <param> [; <param>]* ')' ]
-// type_expr parameterisable_label' = identifier * 'a named_param list
 value_dep_role_decl: mark_loc_ty(plain_value_dep_role_decl) {$1}
 plain_value_dep_role_decl:
 | id=id                              {(id, [])}
 | id=id; LPAR; params=separated_nonempty_list(SEMICOLON, value_dep_role_param); RPAR  {(id, params)}
 ;
 
-// <id>:<type_expr>
 value_dep_role_param: mark_loc_ty(plain_value_dep_role_param) {$1}
 plain_value_dep_role_param:
 |  id=id; COLON; ty=type_expr         {(id,ty)}
 ;
-
-// plain_security_class_decl_section:
-//   decls=nonempty_list(security_class_decl)    {decls}
-// ;
-
-// security_class_decl: mark_loc_ty(plain_security_class_decl) {$1}
-// plain_security_class_decl:
-//   id=id                              {PlainSCDecl(id)}
-// | id=id; LPAR; ty=type_expr; RPAR    {ParametrisedSCDecl(id, ty)}
-// ;
 
 plain_flow_decl_list:
   | flows = nonempty_list(flow_decl) { flows }
@@ -237,10 +143,6 @@ flow_decl: mark_loc_ty(plain_flow_decl) {$1}
 plain_flow_decl:
   separated_pair(id, FLOWS, id)                { $1 }
 ;
-
-
-
-
 
 plain_event_decl_list:
   | events = nonempty_list(event_decl) { events }
@@ -253,24 +155,15 @@ plain_event_decl:
     security_level = delimited(LPAR, security_level, RPAR);
     data_expr = delimited(LBRACKET, data_expr, RBRACKET);
     participants = delimited(LBRACKET, participants_expr ,RBRACKET)
-    // kind = delimited(LBRACKET, kind_expr, RBRACKET);
         { {info; security_level; data_expr; participants; marking} }
-        // { {info; security_level; data_expr; participants; marking; kind} }
-        // { {info; security_level; data_expr; marking; kind} }
-        // { {info; access_ctrl=(fst sec.data); security_level; data_expr; marking; kind} }
   // (optionally) marking declared in extended form
   | info = delimited(LPAR, event_info , RPAR); 
     security_level = delimited(LPAR, security_level, RPAR);
     data_expr = delimited(LBRACKET, data_expr, RBRACKET);
     participants = delimited(LBRACKET, participants_expr ,RBRACKET)
     marking = delimited(LBRACE,node_marking, RBRACE)?;
-    // kind = delimited(LBRACKET, kind_expr, RBRACKET);
       { {info; security_level; data_expr; participants; marking=Option.value ~default:default_marking marking} }
-      // { {info; security_level; data_expr; participants; marking=Option.value ~default:default_marking marking; kind} }
-      // { {info; security_level; data_expr; marking=Option.value ~default:default_marking marking; kind} }
-      // { {info; access_ctrl=(fst sec.data); security_level; data_expr; marking=Option.value ~default:default_marking marking; kind} }
 ;
-
 
 marking_prefix: mark_loc_ty(plain_marking_prefix) {$1}
 plain_marking_prefix:
@@ -311,8 +204,6 @@ plain_sec_label_param_val:
 | fact                        {Parameterised($1)}
 ;
 
-
-
 plain_ctrl_relation_decl_list:
   | rels= nonempty_list(plain_nested_relation_decls)       { List.flatten rels }
 ;
@@ -329,31 +220,17 @@ plain_nested_ctrl_rel_decl:
     ids_r =separated_nonempty_list(COMMA, id)              {(ids_l, rel_type, ids_r)}
 ;
 
-spawn_Trig:
+spawn_trigger:
   | id=id; rel_type=spawn_relation_type           
-      // {(id, rel_type)}
-      {push_trigger @@ resolve_trigger_id "@trigger" (Some id); (id, rel_type)}
+      {push_trigger @@ resolve_trigger_id Syntax.reserved_trigger_sym (Some id); (id, rel_type)}
 ;
 
 nested_spawn_rel_decl: mark_loc_ty(plain_nested_spawn_rel_decl) {$1}
 plain_nested_spawn_rel_decl:
-  | spawn_trigg = spawn_Trig;
+  | spawn_trigg = spawn_trigger;
     prog=delimited(LBRACE, plain_program_spawn, RBRACE)    
     {let (ids_l, rel_type) = spawn_trigg in ([ids_l], peek_trigger (),rel_type, prog)}
-    // prog=delimited(LBRACE, plain_program_spawn, RBRACE)    {let (ids_l, rel_type) = spawn_trigg in ([ids_l], rel_type, prog)}
 ;
-
-// nested_spawn_rel_decl: mark_loc_ty(plain_nested_spawn_rel_decl) {$1}
-// plain_nested_spawn_rel_decl:
-//   | ids_l = separated_nonempty_list(COMMA, id);
-//     rel_type = spawn_relation_type;
-//     prog=delimited(LBRACE, plain_program_spawn, RBRACE)    {(ids_l, rel_type, prog)}
-// ;
-
-
-// | id = spawn_Trig;
-//   rel_type = spawn_relation_type;
-//   prog=delimited(LBRACE, plain_program_spawn, RBRACE)    {(ids_l, rel_type, prog)}
 
 ctrl_relation_type: mark_loc_ty(plain_ctrl_relation_type) {$1}
 plain_ctrl_relation_type:
@@ -375,10 +252,6 @@ plain_spawn_relation_type:
   | LGUARD; expr=plain_expr; RGUARD_SPAWN                 {expr}
 ;
 
-
-
-// ======= event.data_expr
-
 data_expr: mark_loc_ty(plain_data_expr) {$1}
 plain_data_expr:
 | input_expr = preceded(QUESTION, input_expr)      { Input(input_expr) }
@@ -390,9 +263,6 @@ plain_input_expr:
   |                                       { UnitTy }
   | preceded(COLON, plain_type_expr)      { $1 }
 ;
-
-
-// ======= event.participants
 
 participants_expr: mark_loc_ty(plain_participants_expr) {$1}
 plain_participants_expr:
@@ -417,9 +287,8 @@ plain_user_set_role_expr:
 user_set_role_expr_param: mark_loc_ty(plain_user_set_role_expr_param) {$1}
 plain_user_set_role_expr_param:
 | separated_pair(id, ASSIGN, user_set_role_expr_param_val)          {$1}
-| HASHTAG; id=id; alias=option(user_set_role_expr_param_alias)      
-  // {(id, annotate ~loc:(id.loc) (RuntimeValue(alias)))}
-  {(id, annotate ~loc:(id.loc) (Option.fold ~none:Any ~some:(fun alias -> RuntimeValue(Some alias)) alias))}
+| HASHTAG; id=id; alias=option(user_set_role_expr_param_alias)
+    {(id, annotate ~loc:(id.loc) (Option.fold ~none:Any ~some:(fun alias -> RuntimeValue(Some alias)) alias))}
 ;
 
 user_set_role_expr_param_alias:
@@ -441,9 +310,8 @@ plain_user_set_role_expr_param_val_fact:
 | STR                                      { StringLit($1) }
 | id                                       { EventRef($1) } 
 | TRIGGER                                  { Trigger( resolve_trigger_id $1 None) }
-// | trigger=TRIGGER; HASHTAG id=id            { Trigger( resolve_trigger_id trigger (Some id))}
-| expr = user_set_role_expr_param_val_fact; PROP_DEREF; prop = id      {
-   PropDeref(expr, prop) }
+| expr = user_set_role_expr_param_val_fact;
+   PROP_DEREF; prop = id                   {PropDeref(expr, prop) }
 ;
 
 // TODO revisit to include value
@@ -458,9 +326,7 @@ plain_type_expr:
 | INTTY                                                                                   { IntTy    }
 | BOOLTY                                                                                  { BoolTy   }
 | plain_id                                                                                { EventTy($1) }
-| delimited(LBRACE, separated_nonempty_list(SEMICOLON, record_type_field), RBRACE)            { RecordTy($1) }
-// TODO [revisit] it may still be useful (w/ primitive types), e.g., Int(x | x > 10), String(s | s != '')
-// | LBRACE ID COLON type_expr BAR expr RBRACE        { RefinedTy($2,$4,$6) }
+| delimited(LBRACE, separated_nonempty_list(SEMICOLON, record_type_field), RBRACE)        { RecordTy($1) }
 ;
 
 record_type_field: mark_loc_ty(plain_record_type_field) {$1}
@@ -497,16 +363,8 @@ plain_compareop:
 | compareop NEQ arith                          { BinaryOp($1,$3,NotEq) }
 | compareop GREATERTHAN arith                  { BinaryOp($1,$3,GreaterThan) }
 | compareop LESSTHAN arith                     { BinaryOp($1,$3,LessThan) }
-// | plain_event_ref                                {$1}
 | plain_arith                                  { $1 } 
 ;
-
-// event_ref: mark_loc_ty(plain_event_ref) { $1 }
-// plain_event_ref:
-// | id                                           { EventRef($1) } 
-// | plain_arith                                  { $1 } 
-// ;
-
 
 arith: mark_loc_ty(plain_arith) { $1 }
 plain_arith: 
@@ -522,17 +380,18 @@ plain_term:
 
 fact: mark_loc_ty(plain_fact) { $1 }
 plain_fact:
-| expr = preceded(NEG, fact)                                                      { UnaryOp(expr, Negation) }
-| expr = preceded(MINUS, fact)                                                    { UnaryOp(expr, Minus) }
-| TRUE                                                                            { True }
-| FALSE                                                                           { False }
-| INT                                                                             { IntLit($1) }
-| STR                                                                             { StringLit($1) }
-| id                                                                              { EventRef($1) } 
-| TRIGGER                                  { Trigger( resolve_trigger_id $1 None) }
+| expr = preceded(NEG, fact)                { UnaryOp(expr, Negation) }
+| expr = preceded(MINUS, fact)              { UnaryOp(expr, Minus) }
+| TRUE                                      { True }
+| FALSE                                     { False }
+| INT                                       { IntLit($1) }
+| STR                                       { StringLit($1) }
+| id                                        { EventRef($1) } 
+| TRIGGER                                   { Trigger( resolve_trigger_id $1 None) }
 | trigger=TRIGGER; DOLLAR id=id             { Trigger( resolve_trigger_id trigger (Some id))}
-| delimited(LBRACE, separated_nonempty_list(SEMICOLON, record_field), RBRACE)         { Record($1) }
-| expr = fact; PROP_DEREF; prop = id;                                             { PropDeref(expr, prop) }
+| delimited(LBRACE, separated_nonempty_list(SEMICOLON, record_field), RBRACE)     
+                                            { Record($1) }
+| expr = fact; PROP_DEREF; prop = id;       { PropDeref(expr, prop) }
 ;
 
 bool: mark_loc_ty(plain_bool) { $1 }

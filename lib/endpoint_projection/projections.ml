@@ -1103,7 +1103,7 @@ let rewrite_userset (bindings : expr' StringMap.t)
       | Expr expr' -> begin
         match expr'.data with
         | EventRef binding' ->
-          print_endline @@ "!!!   " ^ binding'.data;
+          (* print_endline @@ "!!!   " ^ binding'.data; *)
           (* (reminder) EventRef reflects a binding in this context *)
           Endpoint.Expr (StringMap.find binding'.data bindings)
         | _ -> Endpoint.Expr expr'
@@ -1398,9 +1398,6 @@ and project_events ctxt (events : Choreo.event' list) : ProjectionContext.t =
         trigger_ctxt
     in
     let ctxt = { ctxt with trigger_ctxt } in
-
-    (* debug *)
-    (* print_endline @@ CommunicationCtxt.to_string communication_ctxt; *)
     let { local_bindings; init_ctxt; rcv_ctxt; _ } : CommunicationCtxt.t =
       communication_ctxt
     in
@@ -1410,14 +1407,6 @@ and project_events ctxt (events : Choreo.event' list) : ProjectionContext.t =
     in
 
     let resolve_unify_self (role : CnfRole.t) =
-      (* print_endline
-      @@ Printf.sprintf
-           "@resolve_unify_self - self = %s"
-           (CnfRole.to_string self);
-      print_endline
-      @@ Printf.sprintf
-           "@resolve_unify_self - role = %s"
-           (CnfRole.to_string role); *)
       Option.bind
         (CnfRole.resolve_role_intersection abstract_self role)
         (fun _ -> CnfRole.resolve_role_intersection self role)
@@ -1471,9 +1460,6 @@ and project_events ctxt (events : Choreo.event' list) : ProjectionContext.t =
 
     match (tx_opt, rx_opt) with
     | Some tx_ctxt, Some rx_ctxt ->
-      (* debug *)
-      (* print_endline @@ Printf.sprintf "\nRole label present in both sides"; *)
-
       (* partitioning of implicit constraints across tx and rx according
           to whether they appear: on both sides, on tx-only, on rx-only
         *)
@@ -1505,7 +1491,7 @@ and project_events ctxt (events : Choreo.event' list) : ProjectionContext.t =
            "rx-only constraints: %s\n"
            (unparse_cnf_formula implicit_rx_only); *)
 
-      (* TODO [revise] does it ever apply to rx? *)
+      (* TODO [revise] ever applicable to rx ? refactor : deprecate *)
       (* indicates whether tx/rx roles reduce to a user under all implicit constraints *)
       (* let is_implicit_tx_user, is_implicit_rx_user =
         let is_implicit_user (role : CnfRole.t) unbound_constraints =
@@ -1518,12 +1504,6 @@ and project_events ctxt (events : Choreo.event' list) : ProjectionContext.t =
         ( is_implicit_user tx_ctxt.role implicit_tx_only
         , is_implicit_user rx_ctxt.role implicit_rx_only )
       in *)
-
-      (* debug *)
-      (* print_endline
-      @@ Printf.sprintf "\nrx is implicit user: %b" is_implicit_rx_user;
-      print_endline
-      @@ Printf.sprintf "tx is implicit user: %b\n" is_implicit_tx_user; *)
 
       (* remote user-sets as seen by @self, according to its role *)
       let init_set, rcv_set =
@@ -1847,14 +1827,20 @@ and project_events ctxt (events : Choreo.event' list) : ProjectionContext.t =
         rewrite tx_lead_local_bindings communication_ctxt.receivers
       in
 
-      (* let rcv_set =
-        List.map
-          (rewrite_userset
-             (TriggerCtxt.bindings trigger_ctxt
-             |> StringMap.map (fun e -> snd e)))
-          communication_ctxt.receivers
-      in *)
-      let self =
+    
+      begin
+        match resolve_unify_self tx_ctxt.role with
+        | None -> ctxt
+        | Some (self : CnfRole.t) ->
+          let projection_type =
+            TxO (tx_ctxt.implicit_constraints, rcvrs, rcv_set)
+          in
+          let tx_event =
+            project ctxt event' ~self ~projection_type ~local_bindings
+          in
+          ProjectionContext.include_projected_event event_id tx_event ctxt
+      end
+      (* let self =
         { self with
           encoding =
             Option.get
@@ -1868,7 +1854,7 @@ and project_events ctxt (events : Choreo.event' list) : ProjectionContext.t =
       let projections =
         project ctxt event' ~self ~local_bindings ~projection_type
       in
-      ProjectionContext.include_projected_event event_id projections ctxt
+      ProjectionContext.include_projected_event event_id projections ctxt *)
     | None, Some rx_ctxt ->
       (* TODO [refactor] *)
       let init_set =
