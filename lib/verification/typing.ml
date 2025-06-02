@@ -164,7 +164,6 @@ let debug_preprocessed_events preprocessed_events =
       uid
       id.data
       (String.concat ", " deps)
-      (* (String.concat ", " (deps' @ deps'')) *)
       data_expr_kind
       (if Option.is_none !(ev.ty) then ""
        else unparse_type @@ (Option.get !(ev.ty)).t_expr)
@@ -199,7 +198,6 @@ let rec equal_types ty1 ty2 =
         List.compare_lengths fields1 fields2 = 0
         &&
         let compare_by_name { data = name1, _; _ } { data = name2, _; _ } =
-          (* let compare_by_name (name1, _) (name2, _) = *)
           String.compare name1.data name2.data
         in
         let sorted1 = List.sort compare_by_name fields1
@@ -225,15 +223,12 @@ let rec equal_types ty1 ty2 =
 and update_type_context ctxt (label' : event_label') (ty_info : type_info)
     (uid : element_uid) =
   let event_types = ctxt.event_types in
-  (* let label_info = List.assoc label'.data event_types in *)
   let label_info = StringMap.find label'.data event_types in
   match !label_info with
   | None ->
     label_info := Some { ty_info; uid };
     Ok { ctxt with event_types }
   | Some { ty_info = { t_expr; is_const }; _ } ->
-    (* print_endline (match t_expr with
-       | Even -> pattern) ; *)
     if
       (equal_types [@taicall]) t_expr ty_info.t_expr
       && is_const = ty_info.is_const
@@ -257,8 +252,6 @@ and can_typecheck ~ctxt:{ typecheck_graph; event_types; _ } node =
     | Some (TypeDependency set) -> (StringSet.to_list set, [])
     | None -> ([], [])
   in
-  (* let ty_deps = node.type_dependencies
-     and ev_deps = node.event_dependencies in *)
   Option.is_none (List.find_opt is_pending_ty_dep ty_deps)
   && Option.is_none (List.find_opt is_pending_event_dep ev_deps)
 
@@ -355,8 +348,6 @@ and typecheck_participant_exprs (ctxt : typechecheck_context) =
                  match" )
             ]
       | _ -> begin
-        (* print_endline @@ Printf.sprintf "expr=%s" (Unparser.unparse_expr expr'); *)
-        (* match typecheck_expr expr' ctxt.uid_env ctxt with *)
         match typecheck_expr expr' uid_env ctxt with
         | Ok ty_info ->
           if equal_types ty_info.t_expr declared_param_type'.data then (
@@ -372,23 +363,6 @@ and typecheck_participant_exprs (ctxt : typechecheck_context) =
         | Error _ as err -> err
       end
     end
-    (* begin
-         (* print_endline @@ Printf.sprintf "expr=%s" (Unparser.unparse_expr expr'); *)
-         (* match typecheck_expr expr' ctxt.uid_env ctxt with *)
-         match typecheck_expr expr' uid_env ctxt with
-         | Ok ty_info ->
-           if equal_types ty_info.t_expr declared_param_type'.data then (
-             param_val_expr'.ty := Some ty_info;
-             param_instance'.ty := Some ty_info;
-             Ok (param_aliases, uid_env, declared_params))
-           else
-             Error
-               [ ( param_instance'.loc
-                 , "TODO user-set param val type: actual and declared do not match"
-                 )
-               ]
-         | Error _ as err -> err
-       end *)
     | Any | RuntimeValue _ ->
       let ty_info = { t_expr = declared_param_type'.data; is_const = false } in
       param_val_expr'.ty := Some ty_info;
@@ -464,8 +438,6 @@ and typecheck_security_levels (ctxt : typechecheck_context) =
     in
     match param_val_expr'.data with
     | Parameterised expr' -> begin
-      (* print_endline @@ Printf.sprintf "expr=%s" (Unparser.unparse_expr expr'); *)
-      (* match typecheck_expr expr' ctxt.uid_env ctxt with *)
       match typecheck_expr expr' uid_env ctxt with
       | Ok ty_info ->
         if equal_types ty_info.t_expr declared_param_type'.data then (
@@ -547,19 +519,12 @@ and typecheck_expr ?(force_const = false) (expr' : expr')
   (* ancillary: sets type_info for global expr being typechecked *)
   let set_ty_info ?(force_const = false) (t_expr, is_const) =
     let ty_info = { t_expr; is_const = is_const || force_const } in
-    (* print_endline
-    @@ Printf.sprintf
-         ">> SETTING TYPE_INFO in top-level for %s : {%s, %s}"
-         (Unparser.unparse_expr expr')
-         (Unparser.unparse_type_expr (annotate ty_info.t_expr))
-         (string_of_bool ty_info.is_const); *)
     expr'.ty := Some ty_info;
     Ok ty_info
   in
   (* ancillary: typechecks an event-ref expr *)
   let typecheck_event_ref_helper ?(force_const = false) event_id =
     (* fetch actual event *)
-    (* print_endline @@ Printf.sprintf "value is %s" event_id; *)
     let uid = Option.get @@ Env.find_flat_opt event_id env in
     let typecheck_node = List.assoc uid ctxt.typecheck_graph in
     (* retrieve its label/EventTy and 'const' state *)
@@ -654,51 +619,27 @@ and typecheck_expr ?(force_const = false) (expr' : expr')
     | Error _ as err -> err
   end
   | PropDeref (ref_expr', prop) ->
-    (* print_endline
-       @@ Printf.sprintf
-            "prop deref called with %s.%s"
-            (Unparser.unparse_expr ref_expr')
-            prop.data; *)
     let set_ty_info ?(force_const = None) (t_expr, is_const) expr' =
       let is_const =
         if Option.is_some force_const then Option.get force_const else is_const
       in
       let ty_info = { t_expr; is_const } in
-      (* print_endline
-         @@ Printf.sprintf
-              ">> SETING TYPE_INFO @PropDeref for  %s : {%s, %s}"
-              (Unparser.unparse_expr expr')
-              (Unparser.unparse_type_expr (annotate ty_info.t_expr))
-              (string_of_bool ty_info.is_const); *)
       expr'.ty := Some ty_info;
       (ty_info, force_const)
     in
     (* set expr'.ty and ref_expr'.ty in the process, returning expr'.ty *)
     let rec deref_helper ?(force_const = None) expr' ref_expr' prop' =
-      (* print_endline
-         @@ Printf.sprintf
-              "\n\n>> deref_helper called with: ref_expr:%s  prop:%s"
-              (Unparser.unparse_expr ref_expr')
-              prop'.data; *)
       match ref_expr'.data with
       | PropDeref (ref_expr_1', prop_1') -> begin
-        (* print_endline
-           @@ Printf.sprintf
-                "\n\n>> nested deref_helper:: ref_expr_1:%s  prop_1:%s"
-                (Unparser.unparse_expr ref_expr_1')
-                prop_1'.data; *)
         match deref_helper ~force_const ref_expr' ref_expr_1' prop_1' with
         | Ok ({ t_expr = EventTy label; _ }, force_const) -> begin
           match prop'.data with
           | "value" ->
-            (* print_endline "got .value in nested PropDeref (EventTy)"; *)
             let label_ty_info =
-              (* (Option.get !(List.assoc label ctxt.event_types)).ty_info *)
               (Option.get !(StringMap.find label ctxt.event_types)).ty_info
             in
             (* mystical line... TODO explain better - inputs turn to non-const, unless already set *)
             let new_force_const =
-              (* Option.fold ~none:(Some false) ~some:(Fun.id) force_const *)
               if Option.is_some force_const then force_const
               else Option.Some false
             in
@@ -713,10 +654,8 @@ and typecheck_expr ?(force_const = false) (expr' : expr')
           -> begin
           match prop_1'.data with
           | "value" ->
-            (* print_endline "got .value in nested PropDeref (EventRefTy)"; *)
             (* TODO revisit - should be getting false through event label ? maybe not *)
             let label_ty_info =
-              (* (Option.get !(List.assoc label ctxt.event_types)).ty_info *)
               (Option.get !(StringMap.find label ctxt.event_types)).ty_info
             in
             Ok
@@ -727,10 +666,6 @@ and typecheck_expr ?(force_const = false) (expr' : expr')
           | _ -> Error [ (prop'.loc, no_such_event_property prop') ]
         end
         | Ok ({ t_expr = RecordTy ty_fields; _ }, force_const) -> begin
-          (* print_endline
-             @@ Printf.sprintf
-                  "Nested record ref_expr for global expr: %s"
-                  (Unparser.unparse_expr ref_expr'); *)
           let lookup_res =
             List.find_opt
               (fun { data = name, _; _ } -> name.data = prop'.data)
@@ -758,23 +693,16 @@ and typecheck_expr ?(force_const = false) (expr' : expr')
         begin
           match prop'.data with
           | "value" ->
-            (* print_endline @@ "got .value in nested outter deref (EventRefTy)"; *)
             (* fetch directly to retrieve 'const', which is specific to the event, not the type *)
             let event_node = get_event_node_by_id id in
             let event_label = (snd event_node.event'.data.info.data).data in
-            (* print_endline @@ Printf.sprintf "event label is: %s" event_label; *)
             let { t_expr; is_const } =
               Option.get !(event_node.event'.data.data_expr.ty)
             in
-            (* print_endline
-               @@ Printf.sprintf
-                    "event type: %s"
-                    (Unparser.unparse_type_expr (annotate t_expr)); *)
             let event_ref_ty = EventRefTy (event_label, is_const) in
             let ty_info, _ =
               set_ty_info ~force_const (event_ref_ty, is_const) ref_expr'
             in
-            (* print_endline "done: set type for event_ref"; *)
             Ok (set_ty_info ~force_const (t_expr, is_const) expr')
           | _ -> Error [ (prop'.loc, no_such_event_property prop') ]
         end
@@ -782,25 +710,17 @@ and typecheck_expr ?(force_const = false) (expr' : expr')
         match prop'.data with
         | "value" ->
           (* fetch directly to retrieve 'const', which is specific to the event, not the type *)
-          (* print_endline @@ "got .value in nested outter deref (Trigger)"; *)
           let event_node =
             get_event_node_by_id (annotate ~loc:ref_expr'.loc label)
           in
           let event_label = (snd event_node.event'.data.info.data).data in
-          (* print_endline
-             @@ Printf.sprintf "event label for @trigger is: %s" event_label; *)
           let { t_expr; is_const } =
             Option.get !(event_node.event'.data.data_expr.ty)
           in
-          (* print_endline
-             @@ Printf.sprintf
-                  "event type: %s"
-                  (Unparser.unparse_type_expr (annotate t_expr)); *)
           let event_ref_ty = EventRefTy (event_label, true) in
           let ty_info, _ =
             set_ty_info ~force_const (event_ref_ty, true) ref_expr'
           in
-          (* print_endline @@ "done: set type for event_ref " ^ event_label; *)
           Ok (set_ty_info ~force_const:(Some true) (t_expr, is_const) expr')
         | _ -> Error [ (prop'.loc, no_such_event_property prop') ]
       end
@@ -825,20 +745,10 @@ and typecheck_expr ?(force_const = false) (expr' : expr')
         end
       | _ -> Error [ (Nowhere, "") ]
     in
-
-    (* print_endline @@ "\n\n>>>>>>>@typecheck_expr  "
-       ^ Unparser.unparse_expr expr'; *)
     (* TODO call deref_helper and return *)
     begin
       match deref_helper expr' ref_expr' prop with
       | Ok (ty_info, _) ->
-        (* print_endline
-           @@ Printf.sprintf
-                ">> SETING TYPE_INFO @call to deref_helper for  %s : {%s, %s}"
-                (Unparser.unparse_expr expr')
-                (Unparser.unparse_type_expr (annotate ty_info.t_expr))
-                (string_of_bool ty_info.is_const); *)
-        (* expr'.ty := Some ty_info; *)
         Ok ty_info
       | Error _ as err -> err
     end

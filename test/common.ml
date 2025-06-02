@@ -1,10 +1,7 @@
 open OUnit2
-open Utils
 
 (** Read-in (parse) test program *)
 let set_up (path: string) _test_ctxt = 
-  (* print_endline Io.curr_dir;
-  let path = Io.curr_dir ^ path in *)
   Io.parse_file path
 
 (** Teardown (empty) *)

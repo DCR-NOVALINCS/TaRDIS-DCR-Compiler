@@ -169,14 +169,10 @@ and preprocess_events events ctxt' =
     let label = (snd event'.data.info.data).data in
     (* register the type if not yet encountered *)
     let event_types = StringSet.add label ctxt.event_types in
-    (* if List.mem_assoc label ctxt.event_types then ctxt.event_types
-         else (label, ref None) :: ctxt.event_types
-       in *)
     preprocess_event_id ~ctxt event' >>= fun uid ->
     preprocess_security_level ~ctxt event' >>= fun () ->
     preprocess_participants ctxt event' >>= fun (ctxt, aliases) ->
     collect_event_dependencies ~ctxt event' >>= fun deps ->
-    List.iter (fun (name, _) -> print_endline name) (StringMap.bindings aliases);
     update_ctxt ~ctxt event' uid deps event_types aliases >>= fun ctxt ->
     event'.uid := Some uid;
     let ctxt = increment_uid ctxt in
@@ -503,7 +499,6 @@ and preprocess_relation ctxt relation =
           Env.bind_list
             (StringMap.bindings type_aliases_map)
             userset_alias_types_env
-          (* List.iter (fun (name,_) -> print_endline name) (StringMap.bindings type_aliases_map); *)
         in
         let ctxt = { ctxt with userset_alias_types_env } in
         match preprocess_spawn_program ctxt spawn_progr with
@@ -620,9 +615,6 @@ and check_missing_labels ctxt =
       let check_label ctxt (label : event_label) =
         if StringSet.mem label ctxt.event_types then Ok ctxt
         else Error [ (label'.loc, "Missing label " ^ label) ]
-        (*match List.assoc_opt label ctxt.event_types with
-          | Some _ -> Ok ctxt
-          | None -> Error [ (label'.loc, "Missing label " ^ label) ] *)
       in
       fold_left_error check_label ctxt node.type_dependencies
   in
@@ -636,7 +628,6 @@ and unknown_event_reference event_id =
   Printf.sprintf "Reference to unknown event: '%s'" event_id.data
 
 and redeclared_role prev_decl' =
-  (* let _ = StringMap.find role.data value_dep_roles in *)
   let role, _ = prev_decl' in
   Printf.sprintf
     "Redeclared role: %s\n  previously declared here -> %s"
