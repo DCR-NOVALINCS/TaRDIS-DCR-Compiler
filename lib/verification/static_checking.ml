@@ -123,6 +123,8 @@ module CnfExprCtxt : sig
   val debug_expr_env : expr' Env.t -> unit
 
   val debug_expr_TreeMap : expr list list TreeMap.t -> unit
+
+  val debug_expr_TreeMap2 : expr' TreeMap.t -> unit
 end = struct
   type mode =
     | Static
@@ -140,13 +142,13 @@ end = struct
     ; mode : mode
     }
 
-  (* let debug_expr_TreeMap expr_map =
+  let debug_expr_TreeMap2 expr_map =
        print_endline " ====== [DEBUG start] expr_map ===";
        TreeMap.iter
          (fun key value ->
            print_endline @@ key ^ " : " ^ unparse_expr value)
          expr_map;
-     print_endline " ====== [DEBUG end] expr_map ===" *)
+     print_endline " ====== [DEBUG end] expr_map ==="
   let debug_expr_TreeMap expr_map =
     print_endline " ====== [DEBUG start] expr_map ===";
     let print_expr_list expr_list =
@@ -243,7 +245,7 @@ end = struct
     }
 
   let end_scope ctxt =
-    debug_expr_env ctxt.symbolic_env;
+    (* debug_expr_env ctxt.symbolic_env; *)
     { symbolic_env = Env.end_scope ctxt.symbolic_env
     ; contraints = ctxt.contraints
     ; expr_map = ctxt.expr_map
@@ -294,8 +296,9 @@ end = struct
         end
       end
     in
-    List.filter (fun f -> f <> []) cnf
-    |> List.map (fun list ->
+   let p =  List.filter (fun f -> f <> []) cnf in
+
+     List.map (fun list ->
            let rec aux (literals : literal list) =
              begin
                match literals with
@@ -320,7 +323,7 @@ end = struct
                    (BinaryOp (expr_x, aux xs, Or))
              end
            in
-           aux list)
+           aux list) p
     |> List.fold_left
          (fun acc x ->
            annotate
@@ -357,7 +360,7 @@ end = struct
       Ok aux
 
   let return_constainsts ctxt =
-    debug_contraints ctxt;
+    (* debug_contraints ctxt; *)
     ctxt.expr_map
   (* debug_contraints ctxt; *)
   (* TreeMap.empty *)
@@ -419,6 +422,7 @@ end = struct
   let reset_references ctxt =
     global_label_SC := TreeMap.empty;
     let new_expr_map = CnfExprCtxt.return_constainsts ctxt.symbolic in
+    (* CnfExprCtxt.debug_expr_TreeMap2 new_expr_map; *)
     begin
       match ctxt.symbolic.mode with
       | Hybrid -> Ok new_expr_map
@@ -554,6 +558,7 @@ end = struct
           | Some node -> (
             match node.io with
             | Input _ -> Unknown
+            
             | Computation expr -> Ok (expr, node.env)))
         | EventRef e -> (
           match Env.find_flat_opt e.data env with
@@ -759,7 +764,9 @@ and get_security_of_expr (ctxt : Ctxt.t) expr =
     in
     concat_list n_list expr.loc ctxt
 
-(** Check security levels of graph 1. Verify events 2. Verify relations *)
+(** Check security levels of graph 
+  1. Verify events 
+  2. Verify relations *)
 and check_security_graph (ctxt : Ctxt.t) (events, crs) =
   fold_left_error check_security_event ctxt events >>= fun ctxt1 ->
   fold_left_error check_security_relation ctxt1 crs >>= fun ctxt2 -> Ok ctxt2
@@ -913,7 +920,7 @@ and check_security_relation (ctxt : Ctxt.t) cr =
         | symbolic, SAT -> spawn_creation { ctxt with symbolic })))
 
 (*1. Compare levels of the event with the trigger, if there is no trigger true
-    2. Compare levels of the event with the data
+  2. Compare levels of the event with the data
   3. Check wellform *)
 and check_security_event (ctxt : Ctxt.t) event =
   let check_security_trigger (event : event') (ctxt : Ctxt.t) =
@@ -1303,6 +1310,7 @@ and compareSecurityLevels (node1 : sec_label') (node2 : sec_label') params env
           in
           match (find_param param list1, find_param param list2) with
           | Bot, _ | Parameterised _, Top | Top, Top -> (ctxt, SAT :: list)
+          
           | Parameterised exp1, Parameterised exp2 -> (
             let symb1 = unparse_expr exp1 in
             let symb2 = unparse_expr exp2 in
@@ -1378,7 +1386,7 @@ and compareSecurityLevels (node1 : sec_label') (node2 : sec_label') params env
               ( ctxt
               , UNSAT
                   [ ( exp1.loc
-                    , " [Error] comparing missmatch types exprs: "
+                    , " [Error] Comparing missmatch types exprs: "
                       ^ unparse_expr exp1 ^ " = " ^ unparse_expr exp2 )
                   ]
                 :: list ))
@@ -1386,7 +1394,7 @@ and compareSecurityLevels (node1 : sec_label') (node2 : sec_label') params env
             ( ctxt
             , UNSAT
                 [ ( node1.loc
-                  , " [Error] comparing params values of Security levels" )
+                  , "[Error] Comparing params values of Security levels" )
                 ]
               :: list ))
         (symbolic, [])
@@ -1406,14 +1414,14 @@ and compareSecurityLevels (node1 : sec_label') (node2 : sec_label') params env
       ( symbolic
       , UNSAT
           [ ( node1.loc
-            , "Error in security level comparison in loc "
+            , "[Error] When verifying security level in loc "
               ^ string_of_loc node1.loc ^ " and/or " ^ string_of_loc node2.loc
             )
           ] ))
   | _ ->
     ( symbolic
     , UNSAT
-        [ (node1.loc, "Error in comparing security levels, missmatch levels") ]
+        [ (node1.loc, "[Error] When verifying security level, missmatch levels") ]
     )
 
 (* Get the node pc list without duplicates*)
