@@ -8,14 +8,6 @@ let write_to_file filename res =
   Printf.fprintf oc "%s\n" res;
   close_out oc
 
-let print_errors errors =
-  let open Frontend.Syntax in
-  print_endline "\n== COMPILATION FAILED ==\n  Terminated with errors: ";
-  List.iter
-    (fun (loc, msg) ->
-      print_endline @@ Printf.sprintf "%s: %s\n" (string_of_loc loc) msg)
-    errors
-
 let parse_program lexbuf =
   let open Frontend in
   try Ok (Parser.main Lexer.read_token lexbuf) with
@@ -65,6 +57,7 @@ let prep_output_dir () =
   Sys.mkdir output_dir 0o777
 
 let main () =
+  let open Translation in
   prep_output_dir ();
   let lexbuf = Lexing.from_channel stdin in
   match process_choreography lexbuf with
@@ -73,12 +66,19 @@ let main () =
       (fun (role, endpoint) -> write_to_file (role ^ ".json") endpoint)
       endpoints;
     print_endline "Compilation succeeded.";
-
     flush stdout;
     exit 0
   | Error err ->
+    let print_errors errors =
+      let open Frontend.Syntax in
+      print_endline "Compilation failed with errors: ";
+      List.iter
+        (fun (loc, msg) ->
+          print_endline @@ Printf.sprintf "%s: %s\n" (string_of_loc loc) msg)
+        errors
+    in
     print_errors err;
+    write_to_file "compile_error.json" (Babel.encode_error err);
     exit 1
-(* Terminal input*)
 
 let () = main ()

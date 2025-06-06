@@ -106,7 +106,7 @@ and encode_expr (expr : expr) =
             | IntTy -> "intAdd"
             | StringTy -> "stringConcat"
             | _ ->
-              (* the operator does not apply to further types (extend as needed) *)
+              (* the operator does not apply to further types (overload if needed) *)
               assert false
           end
       | LessThan ->
@@ -115,7 +115,7 @@ and encode_expr (expr : expr) =
             match operand_type with
             | IntTy -> "intLessThan"
             | _ ->
-              (* the operator does not apply to further types (extend as needed) *)
+              (* the operator does not apply to further types (overload if needed) *)
               assert false
           end
       | GreaterThan ->
@@ -124,7 +124,7 @@ and encode_expr (expr : expr) =
             match operand_type with
             | IntTy -> "intGreaterThan"
             | _ ->
-              (* the operator does not apply to further types (extend as needed) *)
+              (* the operator does not apply to further types (overload if needed) *)
               assert false
           end
       | _ ->
@@ -210,8 +210,8 @@ and encode_event (event : event) : Basic.t =
     Option.fold event.instantiation_constraint_opt ~none:common ~some:(fun x ->
         ("instantiationConstraint", encode_expr' x) :: common)
     |> fun common ->
-    uid :: element_uid :: id :: label :: data_type :: marking :: common |> fun common ->
-    ("common", `Assoc common)
+    uid :: element_uid :: id :: label :: data_type :: marking :: common
+    |> fun common -> ("common", `Assoc common)
   in
   match event.data_expr'.data with
   | Input _ -> begin
@@ -331,9 +331,36 @@ and encode_endpoint_process (endpoint : endpoint) : string * string =
       ; ("graph", `Assoc (encode_graph endpoint))
       ]
   in
-  (role_label, Yojson.Basic.pretty_to_string @@ endpoint)
+  (role_label, Yojson.Basic.pretty_to_string endpoint)
 
-(* {"p3": "a_string"; "p4": {"p5": {"p1": true; "p2": 3}} } *)
+let rec encode_error (errors : (Frontend.Syntax.loc * string) list) =
+  let rec encode_pos (pos : Lexing.position) : Basic.t =
+    let line = pos.pos_lnum
+    and col = pos.pos_cnum - pos.pos_bol + 1 in
+    `Assoc [ ("line", `Int line); ("column", `Int col) ]
+  and encode_error ((loc, msg) : Choreo.loc * string) : Basic.t =
+    let message = ("message", `String msg) in
+    match loc with
+    | Nowhere -> `Assoc [ message ]
+    | Location (start_pos, end_pos) ->
+      let start_pos = ("from", encode_pos start_pos)
+      and end_pos = ("to", encode_pos end_pos) in
+      let location = ("location", `Assoc [ start_pos; end_pos ]) in
+      `Assoc [ location; message ]
+  in
+  if List.is_empty errors then assert false
+  else
+    let stack_trace =
+      List.map encode_error errors |> fun (stack_trace : Basic.t list) ->
+      ("stackTrace", `List stack_trace)
+    in
+    let (error : Basic.t) =
+      `Assoc [ ("compileError", `Assoc [ stack_trace ]) ]
+    in
+    Yojson.Basic.pretty_to_string error
+
+(* TODO use to build Unit testing *)
+(* {"p3": "a_string"; "p4": {"p5": {"p1": true; "p2": 3}} }
 let test_record_val () =
   let open Choreo in
   let field1 = annotate (annotate "p1", annotate (BoolVal true)) in
@@ -485,7 +512,7 @@ let test_computation_event () =
   in
   let endpoint =
     { element_uid
-      ;uid
+    ; uid
     ; id
     ; label
     ; data_expr'
@@ -535,7 +562,7 @@ let test_input_event () =
   in
   let endpoint =
     { uid
-    ;element_uid
+    ; element_uid
     ; id
     ; label
     ; data_expr'
@@ -597,4 +624,4 @@ let test_receive_event () =
     }
   in
   print_endline @@ Yojson.Basic.pretty_to_string
-  @@ `List (encode_events [ endpoint ])
+  @@ `List (encode_events [ endpoint ]) *)

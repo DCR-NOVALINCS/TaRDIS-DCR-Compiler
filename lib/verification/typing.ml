@@ -1,32 +1,26 @@
 module StringMap = Map.Make (String)
 module StringSet = Set.Make (String)
 module Choreo = Frontend.Syntax
-
-(* open Preprocessing *)
+module Env = Utils.Env
 open Choreo
-open Utils
 open Utils.Results
 
-(*
-   type 'a named_param_err =
-     | Undefined of 'a named_param' * 'a parameterisable_role'
-     | Undeclared of 'a named_param' * 'a parameterisable_role' *)
-
-(* information associated with every event label in the program:
-    - type_expr: type of the event's data expression (set during typecheck)
-    - uid: the event which first declared the type_expr (set during typecheck)
+(* information associated with every event label in the program (set during typecheck)
+    - type_expr: type of the event's data expression
+    - uid: the event which first declared the type_expr
 *)
 type label_info =
-  { ty_info : type_info (* ty : type_expr' *)
+  { ty_info : type_info
   ; uid : element_uid
   }
 
-(* information collected/required during typechecking:
+(* information collected/required during typecheck:
     - typecheck_graph: program events and their typecheck dependencies (available after preprocessing);
     - event_types: program labels (initialized during preprocessing, updated during typechecking);
     - relations: keeps relations and respective env closures for id -> uid mapping;
 *)
-(* TODO revisit event_types - move option to label info fields  *)
+(* TODO [revisit event_types] requires post-refactoring adjustments
+  (option ref StringMap.t is not great...) *)
 and typechecheck_context =
   { value_dep_roles :
       (identifier' * type_expr' named_param' StringMap.t) StringMap.t
@@ -35,17 +29,17 @@ and typechecheck_context =
   ; relations : (relation' * element_uid Env.t) list
   }
 
-(* a node in the "typecheck graph":
-   - event: the event itself;
-   - type_dependencies: the labels whose type must known prior to typechecking the event;
-   - event_dependencies: the events whose type must be known prior to typechecking the event;
-   - uid_env: the uid environment visible to the event (for typechecking purposes);
-*)
+(** A node in the "typecheck graph":
+    - event: the event itself;
+    - type_dependencies: the labels whose type must known prior to typechecking
+      the event;
+    - event_dependencies: the events whose type must be known prior to
+      typechecking the event;
+    - uid_env: the uid environment visible to the event (for typechecking
+      purposes); *)
 and typecheck_node =
   { event' : event'
   ; data_dependency : Preprocessing.data_dependency option
-        (* ; type_dependencies : string list
-           ; event_dependencies : string list *)
   ; uid_env : element_uid Env.t
   ; userset_alias_types : type_info StringMap.t
   }
@@ -56,6 +50,8 @@ and typecheck_result =
   ; relations : (relation' * element_uid Env.t) list
   }
 
+(* TODO [revisit] data_dependency would benefit from a finer granularity (@trigger vs 
+direct event access) *)
 and event_node =
   { event : event'
   ; data_dependency : Preprocessing.data_dependency option
@@ -63,7 +59,6 @@ and event_node =
   ; userset_alias_types : type_info StringMap.t
   }
 
-(* name : generics . p1 -> p2 -> return = fun ... ->  *)
 let to_string_map :
     'a.
        'a annotated named_param' list
@@ -77,10 +72,6 @@ let to_string_map :
     | Some prev_decl -> Error [ (v'.loc, on_err_duplicate_fields prev_decl) ]
   in
   fold_left_error add_one StringMap.empty entries
-
-(* let assert_same_keys map1 map2 =
-   StringMap.(union (fun _ _ _ -> None) map1 map2) |> StringMap.is_empty
-*)
 
 let assert_same_keys (map1 : 'a named_param' StringMap.t)
     (map2 : 'b named_param' StringMap.t) error_msg =
@@ -219,7 +210,6 @@ let rec equal_types ty1 ty2 =
   in
   equal_types_aux [ (ty1, ty2) ]
 
-(* and update_type_context ctxt (label : event_label) (ty : type_expr') *)
 and update_type_context ctxt (label' : event_label') (ty_info : type_info)
     (uid : element_uid) =
   let event_types = ctxt.event_types in
@@ -232,8 +222,15 @@ and update_type_context ctxt (label' : event_label') (ty_info : type_info)
     if
       (equal_types [@taicall]) t_expr ty_info.t_expr
       && is_const = ty_info.is_const
-    then Ok ctxt (* TODO review error message *)
-    else Error [ (label'.loc, "TODO label types not matching") ]
+    then Ok ctxt
+    else
+      Error
+        [ ( label'.loc
+          , on_err_equally_labelled_events_declare_different_types
+              label'
+              ty_info.t_expr
+              t_expr )
+        ]
 
 (** Check whether the node's dependencies are satisfied *)
 and can_typecheck ~ctxt:{ typecheck_graph; event_types; _ } node =
@@ -242,10 +239,9 @@ and can_typecheck ~ctxt:{ typecheck_graph; event_types; _ } node =
     Option.is_none !(node.event'.ty)
   and is_pending_ty_dep event_ty =
     let ty = !(StringMap.find event_ty event_types) in
-    (* let ty = !(List.assoc event_ty event_types) in *)
     Option.is_none ty
   in
-  (* TODO better bridge between the old syntax and the new *)
+  (* TODO better bridge the old syntax and the new *)
   let ty_deps, ev_deps =
     match node.data_dependency with
     | Some (ValueDependency set) -> ([], StringSet.to_list set)
@@ -344,8 +340,7 @@ and typecheck_participant_exprs (ctxt : typechecheck_context) =
         else
           Error
             [ ( param_instance'.loc
-              , "TODO user-set param val type: binding and declared do not \
-                 match" )
+              , "user-set param val type: binding and declared do not match" )
             ]
       | _ -> begin
         match typecheck_expr expr' uid_env ctxt with
@@ -357,8 +352,7 @@ and typecheck_participant_exprs (ctxt : typechecheck_context) =
           else
             Error
               [ ( param_instance'.loc
-                , "TODO user-set param val type: actual and declared do not \
-                   match" )
+                , "user-set param val type: actual and declared do not match" )
               ]
         | Error _ as err -> err
       end
@@ -374,9 +368,7 @@ and typecheck_participant_exprs (ctxt : typechecheck_context) =
         param_val_expr'.ty := Some mapped_ty_info;
         param_instance'.ty := Some mapped_ty_info;
         Ok (param_aliases, uid_env, declared_params))
-      else
-        Error
-          [ (alias'.loc, "TODO err-msg-fun illegal type - alias param type") ]
+      else Error [ (alias'.loc, "Illegal type - alias param type") ]
   in
   (*
     == typecheck a single user-set expr
@@ -399,9 +391,8 @@ and typecheck_participant_exprs (ctxt : typechecheck_context) =
       | Ok _ -> Ok (ctxt, uid_env, param_aliases)
       | Error stack_trace ->
         Error
-          (( role'.loc
-           , "TODO err-msg-fun: role instance does not conform with it's \
-              declaration" )
+          (( role_expr'.loc
+           , "Role instance does not conform with it's declaration" )
           :: stack_trace))
     | Initiator _ | Receiver _ -> Ok (ctxt, uid_env, param_aliases)
   in
@@ -428,7 +419,7 @@ and typecheck_participant_exprs (ctxt : typechecheck_context) =
   *)
   fold_left_error typecheck_event_participants ctxt ctxt.typecheck_graph
 
-(* TODO [WIP] *)
+
 and typecheck_security_levels (ctxt : typechecheck_context) =
   let typecheck_sec_label_param (uid_env, declared_params)
       (param_instance' : sec_label_param' named_param') =
@@ -447,7 +438,7 @@ and typecheck_security_levels (ctxt : typechecheck_context) =
         else
           Error
             [ ( param_instance'.loc
-              , "TODO err-msg-fun - security label param val type: actual and \
+              , "Security-label parameter type mismatch: actual and \
                  declared do not match" )
             ]
       | Error _ as err -> err
@@ -486,7 +477,8 @@ and typecheck_security_levels (ctxt : typechecheck_context) =
 and typecheck_relations ctxt =
   let typecheck_relation ctxt (relation, env) =
     let extract_guard = function
-      | ControlRelation (_, guard, _, _) | SpawnRelation (_, _, guard, _) -> guard
+      | ControlRelation (_, guard, _, _) | SpawnRelation (_, _, guard, _) ->
+        guard
     and validate_typecheck_res = function
       | Error err -> Error ((relation.loc, bad_expr_in_relation_guard) :: err)
       | Ok { t_expr = BoolTy; _ } -> Ok ctxt
@@ -511,7 +503,6 @@ and typecheck_expr ?(force_const = false) (expr' : expr')
     (type_info, (loc * element_uid) list) result =
   let get_event_node_by_id (id' : event_id') =
     (* follow pointer to get event *)
-    (* TODO issue to solve here related to participant expressions *)
     let uuid = Option.get @@ Env.find_flat_opt id'.data env in
     let event_node = List.assoc uuid ctxt.typecheck_graph in
     event_node
@@ -688,24 +679,22 @@ and typecheck_expr ?(force_const = false) (expr' : expr')
           Error [ (ref_expr'.loc, no_such_deref_property t_expr prop') ]
         | Error _ as err -> err
       end
-      | EventRef id ->
-        print_endline @@ Printf.sprintf "recursion bottom out: %s" id.data;
-        begin
-          match prop'.data with
-          | "value" ->
-            (* fetch directly to retrieve 'const', which is specific to the event, not the type *)
-            let event_node = get_event_node_by_id id in
-            let event_label = (snd event_node.event'.data.info.data).data in
-            let { t_expr; is_const } =
-              Option.get !(event_node.event'.data.data_expr.ty)
-            in
-            let event_ref_ty = EventRefTy (event_label, is_const) in
-            let ty_info, _ =
-              set_ty_info ~force_const (event_ref_ty, is_const) ref_expr'
-            in
-            Ok (set_ty_info ~force_const (t_expr, is_const) expr')
-          | _ -> Error [ (prop'.loc, no_such_event_property prop') ]
-        end
+      | EventRef id -> begin
+        match prop'.data with
+        | "value" ->
+          (* fetch directly to retrieve 'const', which is specific to the event, not the type *)
+          let event_node = get_event_node_by_id id in
+          let event_label = (snd event_node.event'.data.info.data).data in
+          let { t_expr; is_const } =
+            Option.get !(event_node.event'.data.data_expr.ty)
+          in
+          let event_ref_ty = EventRefTy (event_label, is_const) in
+          let ty_info, _ =
+            set_ty_info ~force_const (event_ref_ty, is_const) ref_expr'
+          in
+          Ok (set_ty_info ~force_const (t_expr, is_const) expr')
+        | _ -> Error [ (prop'.loc, no_such_event_property prop') ]
+      end
       | Trigger label -> begin
         match prop'.data with
         | "value" ->
@@ -745,32 +734,26 @@ and typecheck_expr ?(force_const = false) (expr' : expr')
         end
       | _ -> Error [ (Nowhere, "") ]
     in
-    (* TODO call deref_helper and return *)
     begin
       match deref_helper expr' ref_expr' prop with
-      | Ok (ty_info, _) ->
-        Ok ty_info
+      | Ok (ty_info, _) -> Ok ty_info
       | Error _ as err -> err
     end
   | _ -> Error []
 
-(* TODO CALL THIS *)
-(* and typeckeck_security_class ~ctxt env security_class =
-   let label =
-     match security_class with
-     | PlainSC id | ParametrisedSC (id, _) -> id
-   in
-   let security_class_decl = List.assoc label.data ctxt.value_dep_roles in
-   match (security_class, security_class_decl.data) with
-   | PlainSC _, ParametrisedSCDecl _ -> Error []
-   | ParametrisedSC _, PlainSCDecl _ -> Error []
-   | ParametrisedSC (_, Parameter expr), ParametrisedSCDecl (_, ty) -> (
-     let typecheck_res = typecheck_expr expr env ctxt in
-     match typecheck_res with
-     | Error err -> Error err
-     | Ok ty_expr ->
-       if equal_types ty_expr.t_expr ty.data then Ok () else Error [])
-   | _ -> Ok () *)
+(* ============================================================================
+ * == Errors
+ * ========================================================================== *)
+
+and on_err_equally_labelled_events_declare_different_types label'
+    (t_expr : type_expr) (prev_t_expr : type_expr) =
+  Printf.sprintf
+    "Event with label '%s' has type '%s', but the choreography defines another \
+     event with this label (with type '%s');\n\
+    \  Data expressions of events with the same label must have equal types."
+    label'.data
+    (Frontend.Unparser.unparse_type t_expr)
+    (Frontend.Unparser.unparse_type prev_t_expr)
 
 and unknown_security_label_role role =
   Printf.sprintf "Reference to undeclared security label role'%s'" role.data
@@ -930,7 +913,7 @@ let check_program (preprocessing_res : Preprocessing.preprocessing_result) =
   (* TODO remove debugs, just result.fold *)
   match typecheck_res with
   | Ok ctxt ->
-    debug_preprocessed_events ctxt.typecheck_graph;
-    debug_relations ctxt.relations;
+    (* debug_preprocessed_events ctxt.typecheck_graph;
+    debug_relations ctxt.relations; *)
     Ok (typecheck_ctxt_to_typecheck_res ctxt)
   | Error err -> Error err
