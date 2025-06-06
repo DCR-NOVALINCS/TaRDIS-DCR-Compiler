@@ -64,17 +64,13 @@ and preprocessing_result =
   ; relations : (relation' * element_uid Env.t) list
   }
 
-(*
-
-   *)
-
 (* TODO refactor - duplicate in typing *)
 (* ancillary *)
 let to_string_map :
-      'a.
-         'a annotated named_param' list
-      -> ('a annotated named_param' -> string)
-      -> ('a annotated named_param' StringMap.t, _) result =
+    'a.
+       'a annotated named_param' list
+    -> ('a annotated named_param' -> string)
+    -> ('a annotated named_param' StringMap.t, _) result =
  fun entries on_err_duplicate_fields ->
   let add_one map entry' =
     let k', v' = entry'.data in
@@ -87,8 +83,7 @@ let to_string_map :
 (* a global counter used to generate element_uids *)
 let counter = ref 0
 
-and (* [fresh_name_of name counter] generates a fresh *)
-    fresh_name_of id counter =
+and fresh_name_of id counter =
   let fresh_name = Printf.sprintf "%s_%s" id (string_of_int !counter) in
   counter := !counter + 1;
   fresh_name
@@ -142,7 +137,6 @@ let rec preprocess_value_dep_role_decls ctxt (decls : value_dep_role_decl' list)
 
 and preprocess_flow_relations ~ctxt:{ value_dep_roles; _ } flow_relations =
   let process_flow_relation _acc { data = label_l, label_r; _ } =
-    (* TODO rename sec_label_l/r - these are just role labels*)
     let sec_label_l = StringMap.find_opt label_l.data value_dep_roles
     and sec_label_r = StringMap.find_opt label_r.data value_dep_roles in
     match (sec_label_l, sec_label_r) with
@@ -152,9 +146,6 @@ and preprocess_flow_relations ~ctxt:{ value_dep_roles; _ } flow_relations =
   in
   fold_left_error process_flow_relation () flow_relations
 
-(* TODO odoc *)
-
-(**  *)
 and preprocess_spawn_program ctxt { events; relations } =
   preprocess_events events ctxt >>= fun ctxt ->
   preprocess_relations relations ctxt >>= fun ctxt -> Ok ctxt
@@ -182,18 +173,19 @@ and preprocess_events events ctxt' =
      checks the role label and expected parameter names
      (typechecking is addressed later) *)
   and assert_role_decl_conformance :
-        'a 'b.
-           role_label'
-        -> 'b annotated named_param' list
-        -> (identifier' -> string)
-        -> (role_label' -> identifier' -> string)
-        -> (role_label' -> identifier' -> string)
-        -> _ result =
+      'a 'b.
+         role_label'
+      -> 'b annotated named_param' list
+      -> (identifier' -> string)
+      -> (role_label' -> identifier' -> string)
+      -> (role_label' -> identifier' -> string)
+      -> _ result =
    fun role'
        defined
        on_err_unknown_role
        on_err_unknown_param
-       on_err_missing_param ->
+       on_err_missing_param
+     ->
     match StringMap.find_opt role'.data ctxt'.value_dep_roles with
     | None -> Error [ (role'.loc, on_err_unknown_role role') ]
     | Some (declared_role', declared_params) -> begin
@@ -210,13 +202,13 @@ and preprocess_events events ctxt' =
   (* assert whether a list of defined parameters conform with the ones declared;
      in particular, we currently do not allow leaving parameters undefined) *)
   and assert_expected_named_params :
-        'a 'b.
-           role_label'
-        -> 'a named_param' StringMap.t
-        -> 'b named_param' StringMap.t
-        -> (identifier' -> string)
-        -> (identifier' -> string)
-        -> _ result =
+      'a 'b.
+         role_label'
+      -> 'a named_param' StringMap.t
+      -> 'b named_param' StringMap.t
+      -> (identifier' -> string)
+      -> (identifier' -> string)
+      -> _ result =
    fun def_role' declared defined on_err_unknown_param on_err_missing_param ->
     let merger _key opt1 opt2 =
       match (opt1, opt2) with
@@ -272,8 +264,7 @@ and preprocess_events events ctxt' =
           named_param_left_undefined_in_participant_label
       | Initiator _ | Receiver _ -> Ok ()
     (* TODO [refactor] init and rcv exprs turned out to be much more similar than
-       initially expected - must refactor
-       preprocess_initiator_expr and preprocess_receiver_expr *)
+       initially expected *)
     and preprocess_initiator_expr (ctxt, aliases) initiator_expr' =
       let preprocess_initiator_expr_param role (ctxt, aliases) named_param' =
         let param_name', param_val' = named_param'.data in
@@ -289,11 +280,7 @@ and preprocess_events events ctxt' =
           match alias with
           | None -> Ok (ctxt, aliases)
           | Some alias' ->
-            if
-              Option.is_some (StringMap.find_opt alias'.data aliases)
-              (* Option.is_some
-                 (Env.find_flat alias'.data pp_ctxt.userset_alias_types_env) *)
-            then
+            if Option.is_some (StringMap.find_opt alias'.data aliases) then
               Error
                 [ ( alias'.loc
                   , "TODO err-msg function: redeclaring existing alias" )
@@ -307,15 +294,8 @@ and preprocess_events events ctxt' =
               Ok (ctxt, aliases)
         end
         | Alias alias' ->
-          (* TODO factorize... maybe *)
-          (* if
-               Option.is_some
-                 (Env.find_flat alias'.data pp_ctxt.userset_alias_types_env)
-             then Ok (pp_ctxt, ctxt, aliases)
-             else *)
           if StringMap.mem alias'.data aliases then Ok (ctxt, aliases)
-            (* if StringMap.mem alias'.data aliases then Ok (pp_ctxt, ctxt, aliases) *)
-          else Error [ (alias'.loc, "TODO err-msg-fun unknown param alias") ]
+          else err_unknown_parameter_alias alias'
         | Expr expr' ->
           let rec is_trigger_deref = function
             | Trigger _ -> true
@@ -335,7 +315,7 @@ and preprocess_events events ctxt' =
                   ]
             | EventRef id' ->
               if StringMap.mem id'.data aliases then Ok (ctxt, aliases)
-              else Error [ (id'.loc, "TODO err-msg-fun unknown param alias") ]
+              else err_unknown_parameter_alias id'
             | _ ->
               Error
                 [ ( expr'.loc
@@ -370,7 +350,8 @@ and preprocess_events events ctxt' =
             ]
         | Alias alias' ->
           if StringMap.mem alias'.data aliases then Ok (ctxt, aliases)
-          else Error [ (alias'.loc, "TODO err-msg-fun unknown param alias") ]
+          else err_unknown_parameter_alias alias'
+            (* else Error [ (alias'.loc, "TODO err-msg-fun unknown param alias") ] *)
         | Expr expr' ->
           let rec is_trigger_deref = function
             | Trigger _ -> true
@@ -390,7 +371,8 @@ and preprocess_events events ctxt' =
                   ]
             | EventRef id' ->
               if StringMap.mem id'.data aliases then Ok (ctxt, aliases)
-              else Error [ (id'.loc, "TODO err-msg-fun unknown param alias") ]
+              else err_unknown_parameter_alias id'
+                (* else Error [ (id'.loc, "TODO err-msg-fun unknown param alias") ] *)
             | _ ->
               Error
                 [ ( expr'.loc
@@ -474,7 +456,7 @@ and preprocess_relation ctxt relation =
       | Error err -> Error err
       | Ok _ -> Ok { ctxt with relations = (relation, env) :: ctxt.relations })
   end
-  | SpawnRelation (id, trigger_label, guard, spawn_progr) -> ( 
+  | SpawnRelation (id, trigger_label, guard, spawn_progr) -> (
     match Env.find_flat_opt id.data env with
     | None -> unknown_event_reference_err id
     | Some uid -> (
@@ -484,8 +466,9 @@ and preprocess_relation ctxt relation =
       | Ok _ -> (
         let ctxt =
           { ctxt with
-            relations = (relation, env) :: ctxt.relations
-          (* ; uid_env = Utils.Env.bind "@trigger" uid @@ Env.begin_scope env *)
+            relations =
+              (relation, env) :: ctxt.relations
+              (* ; uid_env = Utils.Env.bind "@trigger" uid @@ Env.begin_scope env *)
           ; uid_env = Utils.Env.bind trigger_label uid @@ Env.begin_scope env
           }
         and type_aliases_map =
@@ -623,6 +606,18 @@ and check_missing_labels ctxt =
 (* ==========
    Errors
    ===========*)
+
+and err_unknown_parameter_alias alias' =
+  Error
+    [ ( alias'.loc
+      , Printf.sprintf
+          "Unknown alias '%s': alias is not bound to any parameter in this \
+           scope).\n\
+          \  (requires a previous '<param> as %s' to be introduced in this \
+           scope)"
+          alias'.data
+          alias'.data )
+    ]
 
 and unknown_event_reference event_id =
   Printf.sprintf "Reference to unknown event: '%s'" event_id.data
