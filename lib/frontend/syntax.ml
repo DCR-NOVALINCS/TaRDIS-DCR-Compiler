@@ -215,7 +215,11 @@ and sec_label_param =
   | Bot
   | Parameterised of expr'
 
-and sec_label' = sec_label_param' parameterisable_role'
+and sec_label' = sec_label annotated
+
+and sec_label = 
+  | Sec of sec_label_param' parameterisable_role'
+  | SecExpr of expr'
 
 and security_level' = security_level annotated
 

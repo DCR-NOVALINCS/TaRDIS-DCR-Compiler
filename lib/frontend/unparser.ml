@@ -154,16 +154,23 @@ and unparse_sec_label_param_val' = function
 and unparse_sec_label_param' (id, value) =
   Printf.sprintf "(%s:%s)" id.data @@ unparse_sec_label_param_val' value.data
 
-and unparse_sec_label' = function
-  | role, [] -> role.data
-  | role, named_params ->
-    deannotate_list named_params
+and unparse_sec_label' level= 
+  match level.data with
+  | Sec (n) ->
+    let (role,  named_params) = n.data in
+    begin match named_params with
+    | [] -> role.data
+    | ls -> 
+    deannotate_list ls
     |> List.map unparse_sec_label_param'
     |> String.concat ";"
     |> Printf.sprintf "%s(%s)" role.data
+    end
+  | SecExpr expr ->
+      Printf.sprintf "Expr(%s)" (unparse_expr expr)
 
 and unparse_security_level' sec_labels =
-  deannotate_list sec_labels
+    sec_labels
   |> List.map unparse_sec_label'
   |> String.concat "," |> Printf.sprintf "(%s)"
 

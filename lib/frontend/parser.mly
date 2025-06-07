@@ -179,14 +179,21 @@ plain_event_info:
 
 security_level: mark_loc_ty(plain_security_level) {$1}
 plain_security_level:
-| sec_level=separated_nonempty_list(COMMA, security_label)    {sec_level}
+| sec_level=separated_nonempty_list(COMMA, security_label_extended)    {sec_level}
 ;
+
+
+security_label_extended: mark_loc_ty(plain_security_label_extended) {$1}
+plain_security_label_extended:
+| fact                                                           { SecExpr ($1) } 
+| security_label                                                  { Sec ($1)}
 
 security_label: mark_loc_ty(plain_security_label) { $1 }
 plain_security_label:
-| id                                                             {($1, [])}
-| id=id; params=delimited(LPAR, plain_sec_label_params, RPAR)    {(id, params)}
+| id                                                             { ($1, [])}
+| id=id; params=delimited(LPAR, plain_sec_label_params, RPAR)    { (id, params)}
 ;
+
 
 plain_sec_label_params:
 | separated_nonempty_list(SEMICOLON, sec_label_param)   {$1}

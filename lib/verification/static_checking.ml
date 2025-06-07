@@ -77,7 +77,7 @@ let _BOT : string = "Bot"
 
 let _TOP : string = "Top"
 
-let _BOT_LEVEL : security_level = [ annotate (annotate _BOT, []) ]
+let _BOT_LEVEL : security_level = [ annotate (Sec (annotate (annotate _BOT, []))) ]
 
 let global_label_SC : security_level TreeMap.t ref = ref TreeMap.empty
 

@@ -1,0 +1,28 @@
+CO(cid:Integer)
+P(id:String; cid:Integer)
+Public
+;
+Public flows P
+Public flows CO
+;
+// cid: Bot existem vários consumos para uma comunidade.
+(csm:consume) ( P(id:Bot; cid:Bot)) [?] [P(#id; #cid as X) -> P(id=*; cid=X)] 
+;
+csm -->> {
+    // Não funciona porque a ferramenta não suporta dados que não existem no ambiente. Pois Initiator e Receiver
+    /estão num ambiente a parte que permite raciocinar sobre os participantes e nao os dados.
+    //(reply: reply) (@Initiator(csm)) [?:Integer] [@Receiver(csm) -> @Initiator(csm)]
+    // se adicionarmos o CO por exemplo não sabemos que receiver.id/initiator.id estamos a referir.
+  //(reply: reply) (P(id:@trigger.initiator.id; cid:@trigger.initiator.cid),P(id:@trigger.receiver.id; cid:@trigger.receiver.cid)) [?:Integer] [@Receiver(csm) -> @Initiator(csm)]
+  
+  // trigger nos dados todos os participantes vão receber os mesmos dados.
+  //(reply: reply) (P(id:Bot; cid:@trigger.value.cid)) [?:Integer] [@Receiver(csm) -> @Initiator(csm)]
+  ;
+  reply -->% reply
+  reply -->> {
+    (accept: accept) (P(id:@trigger; cid:@trigger.initiator.cid),P(id:@trigger.receiver.id; cid:@trigger.receiver.cid)) [?] [@Initiator(csm) -> @Receiver(csm)]
+    (reject: reject) (P(id:@trigger.initiator.id; cid:@trigger.initiator.cid),P(id:@trigger.receiver.id; cid:@trigger.receiver.cid)) [?] [@Initiator(csm) -> @Receiver(csm)]
+    ;
+    accept, reject -->% accept, reject
+  }
+}
