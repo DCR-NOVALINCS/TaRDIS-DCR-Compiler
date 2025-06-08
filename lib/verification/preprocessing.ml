@@ -237,14 +237,19 @@ and preprocess_events events ctxt' =
      (exprs occuring in parameter values are typechecked later on) *)
   and preprocess_security_level ~ctxt:{ value_dep_roles; _ } event =
     let preprocess_security_label
-        (sec_label' : sec_label_param' parameterisable_role') =
-      let sec_label_role', named_params = sec_label'.data in
+        (sec_label' : sec_label') =
+      begin match sec_label'.data with
+      | Sec p-> 
+      let  (sec_label_role', named_params) = p.data in
       assert_role_decl_conformance
         sec_label_role'
         named_params
         unknown_security_label_role
         on_err_unknown_named_param_in_sec_label
         on_err_named_param_left_undefined_in_sec_label
+      | SecExpr expr -> 
+        Ok()
+      end 
     in
     iter_left_error preprocess_security_label event.data.security_level.data
   (* assert whether all role-based expressions conform to the declared roles with
@@ -523,8 +528,12 @@ and collect_event_dependencies ~ctxt:{ uid_env; _ } (event' : event') =
     in
     (* collect any event references within a security label *)
     let collect_label_deps acc sec_label' =
-      let _, params = sec_label'.data in
+      begin match sec_label'.data with
+      | Sec sec -> 
+      let _, params = sec.data in
       fold_left_error collect_param_deps acc params
+      | SecExpr expr' -> collect_expr_dependencies expr' uid_env
+      end 
     in
     (* TODO <when stable> cleanup what was left behind from access control *)
     (* fold_left_error fold_helper [] event.data.access_ctrl >>= fun deps' -> *)

@@ -1483,8 +1483,13 @@ and collect_event_dependencies (ctxt : Context.t) (event' : event') =
     in
     (* collect dependencies within a security label *)
     let collect_label_deps acc sec_label' =
-      let _, params = sec_label'.data in
-      List.fold_left collect_param_deps acc params
+      begin match sec_label'.data with
+      | Sec sec ->
+        let _, params = sec.data in
+        List.fold_left collect_param_deps acc params
+      | SecExpr expr' ->
+        collect_expr_dependencies expr' @ acc
+      end 
     in
     List.fold_left collect_label_deps [] event'.data.security_level.data
   in

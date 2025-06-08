@@ -167,7 +167,7 @@ and unparse_sec_label' level=
     |> Printf.sprintf "%s(%s)" role.data
     end
   | SecExpr expr ->
-      Printf.sprintf "Expr(%s)" (unparse_expr expr)
+      Printf.sprintf "Security Expr (%s)" (unparse_expr expr)
 
 and unparse_security_level' sec_labels =
     sec_labels

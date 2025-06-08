@@ -684,16 +684,20 @@ and retrive_security_of_events (ctxt : Ctxt.t) (events, crs) =
       let security_level = event_data.security_level.data in
       List.for_all
         (fun sec_label ->
-          let _, param = sec_label.data in
-          match param with
-          | [] -> true
-          | xs ->
-            List.for_all
-              (fun x ->
-                match !(x.ty) with
-                | None -> true
-                | Some t -> t.is_const)
-              xs)
+          begin match sec_label.data with
+          | Sec sec -> let _, param = sec.data in
+            begin match param with
+            | [] -> true
+            | xs ->
+              List.for_all
+                (fun x ->
+                  match !(x.ty) with
+                  | None -> true
+                  | Some t -> t.is_const)
+                xs
+              end
+          | SecExpr _ -> true
+          end)
         security_level
     in
     let event_data = event.data in
@@ -706,7 +710,7 @@ and retrive_security_of_events (ctxt : Ctxt.t) (events, crs) =
     else
       Error
         [ ( event.loc
-          , "   Error checking if all security parameters are constants in: "
+          , "[Error] Checking if all security parameters are constants in: "
             ^ id.data ^ ":" ^ label.data )
         ]
   in
@@ -867,12 +871,12 @@ and check_security_relation (ctxt : Ctxt.t) cr =
     match get_security_of_expr ctxt exp with
     | Error err ->
       Error
-        ((exp.loc, "  Error in checking spawn guard expression " ^ event.data)
+        ((exp.loc, "[Error] Checking spawn guard expression " ^ event.data)
         :: err)
     | Ok security_list -> (
       match Env.find_flat_opt event.data ctxt.env with
       | None ->
-        Error [ (cr.loc, "  Error finding the trigger event: " ^ event.data) ]
+        Error [ (cr.loc, "[Error] finding the trigger event: " ^ event.data) ]
       | Some node -> (
         let spawn_creation ctxt =
           let new_ctxt =
@@ -881,7 +885,7 @@ and check_security_relation (ctxt : Ctxt.t) cr =
           match check_security_graph new_ctxt (prog.events, prog.relations) with
           | Ok ctxt2 -> Ok (Ctxt.end_scope ctxt2)
           | Error s ->
-            Error ((cr.loc, " Error checking security in spawn relation") :: s)
+            Error ((cr.loc, "[Error] Checking security in spawn relation") :: s)
         in
         match
           check_less_or_equal_security_level
@@ -924,6 +928,7 @@ and check_security_relation (ctxt : Ctxt.t) cr =
   3. Check wellform *)
 and check_security_event (ctxt : Ctxt.t) event =
   let check_security_trigger (event : event') (ctxt : Ctxt.t) =
+      
     if ctxt.trigger_stack = [] then Ok ctxt
     else
       let trigger_node = Env.find_flat (Ctxt.get_trigger ctxt) ctxt.env in
@@ -941,7 +946,7 @@ and check_security_event (ctxt : Ctxt.t) event =
       | _, UNSAT e ->
         Error
           (( event.loc
-           , "Infomation leak: Error processing spawned event "
+           , "[Error] Infomation leak in event trigger "
              ^ unparse_event_info event.data.info.data
              ^ " with trigger event "
              ^ unparse_event_info trigger_node.info.data )
@@ -952,7 +957,7 @@ and check_security_event (ctxt : Ctxt.t) event =
           !(event.uid)
           event.loc
           e
-          "Error in event: Invalid event trigger uuid in Unknown "
+          "[Error] Event: Invalid event trigger uuid in Unknown "
           { ctxt with symbolic }
   in
 
@@ -968,7 +973,7 @@ and check_security_event (ctxt : Ctxt.t) event =
         match TreeMap.find_opt s !global_label_SC with
         | None ->
           Error
-            [ (type_expr.loc, "Error in static check Event type expr " ^ s) ]
+            [ (type_expr.loc, "[Error] Static check Event type expr " ^ s) ]
         | Some node ->
           Ok (get_levels_from_SC_List filter_higher_levels node [] ctxt))
       | EventTy s -> (
@@ -977,13 +982,13 @@ and check_security_event (ctxt : Ctxt.t) event =
           Ok (get_levels_from_SC_List filter_higher_levels node [] ctxt)
         | None ->
           Error
-            [ (type_expr.loc, "Error in static check Event type expr " ^ s) ])
+            [ (type_expr.loc, "[Error] Static check Event type expr " ^ s) ])
       | RecordTy r -> (
         let list_pc =
           List.fold_left
             (fun acc l ->
               match acc with
-              | Error e -> Error ((type_expr.loc, "Error in RecordTy") :: e)
+              | Error e -> Error ((type_expr.loc, "[Error] RecordTy") :: e)
               | Ok acc' -> (
                 match l with
                 | Ok l' -> Ok (acc' @ l')
@@ -999,7 +1004,7 @@ and check_security_event (ctxt : Ctxt.t) event =
         | Ok get_list ->
           Ok (get_levels_from_SC_List filter_higher_levels get_list [] ctxt))
       | ListTy _ ->
-        Error [ (type_expr.loc, "Error in static check ListTy type expr ") ]
+        Error [ (type_expr.loc, "[Error] Static check ListTy type expr ") ]
       | ListTyEmpty -> Ok _BOT_LEVEL
     in
     match event.data_expr.data with
@@ -1010,7 +1015,7 @@ and check_security_event (ctxt : Ctxt.t) event =
       | Error e ->
         Error
           (( ty_expr.loc
-           , "Error in expression of event " ^ (fst event.info.data).data ^ ":"
+           , "[Error] Expression of event " ^ (fst event.info.data).data ^ ":"
              ^ (snd event.info.data).data )
           :: e)
       | Ok security_lvl -> (
@@ -1029,7 +1034,7 @@ and check_security_event (ctxt : Ctxt.t) event =
         | _, UNSAT e ->
           Error
             (( ty_expr.loc
-             , "Error static ifc in expression of event "
+             , "[Error] Static ifc in expression of event "
                ^ (fst event.info.data).data ^ ":" ^ (snd event.info.data).data
              )
             :: e)
@@ -1039,7 +1044,7 @@ and check_security_event (ctxt : Ctxt.t) event =
       | Error e ->
         Error
           (( expr.loc
-           , "Error static ifc node exp " ^ (fst event.info.data).data ^ ":"
+           , "[Error] Static ifc node exp " ^ (fst event.info.data).data ^ ":"
              ^ (snd event.info.data).data )
           :: e)
       | Ok security_level -> (
@@ -1059,7 +1064,7 @@ and check_security_event (ctxt : Ctxt.t) event =
         | _, UNSAT e ->
           Error
             (( expr.loc
-             , "Error static ifc in node exp " ^ (fst event.info.data).data
+             , "[Error] static ifc in node exp " ^ (fst event.info.data).data
                ^ ":" ^ (snd event.info.data).data )
             :: e)
         | symbolic, Unknown e ->
@@ -1073,6 +1078,16 @@ and check_security_event (ctxt : Ctxt.t) event =
       =
     fold_left_error
       (fun (acc, ctxt) (lvl : sec_label') ->
+        begin match lvl.data with
+        | SecExpr exp1 -> 
+          begin match concat_list
+            [ get_security_of_expr ctxt exp1 ]
+            loc ctxt with
+          | Error e -> Error e
+          | Ok l -> Ok (l @ acc, ctxt)
+          end
+          (* Error [(loc, "Error in static check SecExpr: not implemented")] *)
+        | Sec lvl ->
         let _, list_params1 = lvl.data in
         let list_params_expr =
           List.map (fun (_, exp) -> exp.data) (deannotate_list list_params1)
@@ -1088,7 +1103,8 @@ and check_security_event (ctxt : Ctxt.t) event =
         in
         match concat_list list_params loc ctxt with
         | Ok l -> Ok (l @ acc, ctxt)
-        | Error e -> Error e)
+        | Error e -> Error e
+      end)
       ([], ctxt)
       security_event
     >>= fun (sec2, ctxt2) ->
@@ -1100,14 +1116,14 @@ and check_security_event (ctxt : Ctxt.t) event =
   | Error e ->
     Error
       (( event.data.info.loc
-       , "Error checking ifc trigger in event " ^ id.data ^ ":" ^ label.data )
+       , "[Error] Checking ifc trigger in event " ^ id.data ^ ":" ^ label.data )
       :: e)
   | Ok ctxt1 -> (
     match static_check_security_of_data_expr event.data ctxt1 with
     | Error e ->
       Error
         (( event.data.info.loc
-         , "Error checking ifc levels in event " ^ id.data ^ ":" ^ label.data )
+         , "[Error] Checking ifc levels in event " ^ id.data ^ ":" ^ label.data )
         :: e)
     | Ok (ctxt, cnf_list2) -> (
       (* print_endline @@ "Data: " ^ (fst event.data.info.data).data ^ " :"
@@ -1117,7 +1133,7 @@ and check_security_event (ctxt : Ctxt.t) event =
       | Error e ->
         Error
           (( event.data.info.loc
-           , "Error checking wellformedness in event " ^ id.data ^ ":"
+           , "[Error] Checking wellformedness in event " ^ id.data ^ ":"
              ^ label.data )
           :: e)
       | Ok cnf_list3 -> (
@@ -1131,7 +1147,7 @@ and check_security_event (ctxt : Ctxt.t) event =
         | Error e ->
           Error
             (( event.data.info.loc
-             , "Error checking security parameters in event " ^ id.data ^ ":"
+             , "[Error] Checking security parameters in event " ^ id.data ^ ":"
                ^ label.data )
             :: e)
         | Ok list -> (
@@ -1155,13 +1171,13 @@ and check_security_event (ctxt : Ctxt.t) event =
                   !(event.uid)
                   event.data.info.loc
                   new_cond
-                  "Error in event: Invalid event uuid in SAT"
+                  "[Error] Event: Invalid event uuid in SAT"
                   { new_ctxt with symbolic }
               with
               | Error e ->
                 Error
                   (( event.data.info.loc
-                   , "Error in static checking security param in event "
+                   , "[Error] Static checking security param in event "
                      ^ id.data ^ ":" ^ label.data )
                   :: e)
               | Ok new_ctxt -> Ok new_ctxt
@@ -1169,7 +1185,7 @@ and check_security_event (ctxt : Ctxt.t) event =
           | _, UNSAT e ->
             Error
               (( event.data.info.loc
-               , "Error in static checking security param in event " ^ id.data
+               , "[Error] Static checking security param in event " ^ id.data
                  ^ ":" ^ label.data )
               :: e)
           | symbolic, Unknown e ->
@@ -1180,13 +1196,13 @@ and check_security_event (ctxt : Ctxt.t) event =
                   !(event.uid)
                   event.data.info.loc
                   new_cond
-                  "Error in event: Invalid event uuid in Unknown"
+                  "[Error] Event: Invalid event uuid in Unknown"
                   { new_ctxt with symbolic }
               with
               | Error e ->
                 Error
                   (( event.data.info.loc
-                   , "Error checking security paramarameters in event "
+                   , "[Error] Checking security paramarameters in event "
                      ^ id.data ^ ":" ^ label.data )
                   :: e)
               | Ok new_ctxt -> Ok new_ctxt
@@ -1195,6 +1211,7 @@ and check_security_event (ctxt : Ctxt.t) event =
 and check_less_or_equal_security_level (event_security : security_level)
     (env : node Env.t) (exp_security : security_level) (env2 : node Env.t)
     sec_params lattice symbolic_env relation =
+    (*Lado de dentro esta no scope imediato*)
   let (new_ctxt, sat_list) :
       CnfExprCtxt.t * (cnf_formula, (loc * role_label) list) leakError list =
     List.fold_left
@@ -1202,34 +1219,41 @@ and check_less_or_equal_security_level (event_security : security_level)
         let resCtxt, resList =
           List.fold_left
             (fun (ctxt2, list2) node_1 ->
-              if relation then
-                let ctxt3, list3 =
+              begin match l.data , node_1.data with
+              | Sec exp1, Sec exp2 -> 
+                let ctxt3, list3 = 
+                if relation then 
                   depth_first_search
-                    node_1
-                    l
+                exp2
+                exp1
                     !lattice
                     []
                     sec_params
                     env
                     env2
                     ctxt2
-                in
-                (ctxt3, list3 :: list2)
-              else
-                let ctxt3, list3 =
-                  depth_first_search
-                    l
-                    node_1
+                  else
+                    depth_first_search
+                    exp1
+                    exp2
                     !lattice
                     []
                     sec_params
                     env2
                     env
                     ctxt2
-                in
-                (ctxt3, list3 :: list2))
-            (ctx1, [])
-            event_security
+                  in (ctxt3, list3 :: list2)
+                | SecExpr exp1 , SecExpr exp2 -> 
+                  (* Alterar se for para usar runtime*)
+                  let unp1 = unparse_expr exp1 in
+                  let unp2 = unparse_expr exp2 in 
+                  if (String.compare unp1 unp2) = 0 then  
+                    (ctx1, SAT::list2)
+                  else 
+                    (ctx1, UNSAT[(Nowhere, "[Error] Comparing both security levels "^unp1 ^" <> "^unp2)]::list2)
+                | _ , _ ->  (ctx1, UNSAT[(Nowhere, "[Error] Comparing both security levels ")]::list2)
+              end)
+            (ctx1, []) event_security
         in
         (resCtxt, CnfExprCtxt.or_list resList :: list))
       (symbolic_env, [])
@@ -1237,7 +1261,7 @@ and check_less_or_equal_security_level (event_security : security_level)
   in
   (new_ctxt, CnfExprCtxt.and_list sat_list)
 
-and depth_first_search (node1 : sec_label') (node2 : sec_label')
+and depth_first_search (node1 : sec_label_param' parameterisable_role') (node2 : sec_label_param' parameterisable_role')
     (lattice : string list TreeMap.t) (visited : string list) params
     (env : node Env.t) env2 symbolic =
   if List.mem (fst node1.data).data visited then (symbolic, SAT)
@@ -1285,8 +1309,22 @@ and depth_first_search (node1 : sec_label') (node2 : sec_label')
       visited
       []
       symbolic
+    (* | SecExpr exp1, SecExpr exp2 ->
+      let symbolic1 = unparse_expr exp1 in
+      let symbolic2 = unparse_expr exp2 in
+      if String.compare symbolic1 symbolic2 = 0 then
+        (symbolic, SAT)
+      else
+        (symbolic, UNSAT[(sec1.loc, "[Error] Comparing SecExpr: " ^ symbolic1
+          ^ " and " ^ symbolic2)])
+    (* | Sec _ , SecExpr _ -> 
+      (symbolic, UNSAT[(sec1.loc, "[Error] Not implemented: Comparing SecExpr")]) *)
+    | _, _ -> 
+      (symbolic, UNSAT[(sec1.loc, "[Error] Comparing security levels: "
+        ^ unparse_sec_label' sec1 ^ " and " ^ unparse_sec_label' sec2)]) *)
+  (* end *)
 
-and compareSecurityLevels (node1 : sec_label') (node2 : sec_label') params env
+and compareSecurityLevels (node1 : sec_label_param' parameterisable_role') (node2 : sec_label_param' parameterisable_role') params env
     env2 symbolic =
   let compareParamList (list1 : sec_label_param' named_param' list)
       (list2 : sec_label_param' named_param' list) params env env2
@@ -1436,18 +1474,25 @@ and get_levels_from_SC_List filter_function (pc_list : security_level)
         if
           List.exists
             (fun l' ->
-              match
-                compareSecurityLevels
-                  l
-                  l'
-                  ctxt.sec_params
-                  ctxt.env
-                  ctxt.env
-                  ctxt.symbolic
-              with
-              | _, SAT -> true
-              | _, Unknown _ -> false
-              | _, UNSAT _ -> false)
+              begin match l.data, l'.data with
+              | Sec l, Sec l' ->
+                begin match
+                  compareSecurityLevels
+                    l
+                    l'
+                    ctxt.sec_params
+                    ctxt.env
+                    ctxt.env
+                    ctxt.symbolic
+                with
+                | _, SAT -> true
+                | _, Unknown _ -> false
+                | _, UNSAT _ -> false
+              end
+              | SecExpr expr, SecExpr expr2 -> String.compare (unparse_expr expr)
+                (unparse_expr expr2) = 0
+              | _ , _ -> false
+              end)
             acc
         then acc
         else l :: acc)

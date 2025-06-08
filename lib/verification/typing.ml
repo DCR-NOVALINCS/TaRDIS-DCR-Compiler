@@ -448,9 +448,12 @@ and typecheck_security_levels (ctxt : typechecheck_context) =
   let typecheck_security_label
       ((ctxt, uid_env) : typechecheck_context * element_uid Env.t)
       (sec_label' : sec_label') =
-    let role', actual_params = sec_label'.data in
+      begin
+    match sec_label'.data with
+    | Sec e -> 
+    let role', actual_params = e.data in
     let _, declared_params = StringMap.find role'.data ctxt.value_dep_roles in
-    match
+    begin match
       fold_left_error
         typecheck_sec_label_param
         (uid_env, declared_params)
@@ -463,6 +466,15 @@ and typecheck_security_levels (ctxt : typechecheck_context) =
          , "TODO err-msg-fun: role instance does not conform with it's \
             declaration" )
         :: stack_trace)
+    end
+    | SecExpr expr' ->
+      begin match typecheck_expr expr' uid_env ctxt with
+      | Ok ty_info ->
+        sec_label'.ty := Some ty_info;
+        Ok (ctxt, uid_env)
+      | Error _ as err -> err
+      end
+    end
   in
 
   let typecheck_security_level (ctxt : typechecheck_context) (uid, node) =
@@ -619,6 +631,7 @@ and typecheck_expr ?(force_const = false) (expr' : expr')
       (ty_info, force_const)
     in
     (* set expr'.ty and ref_expr'.ty in the process, returning expr'.ty *)
+    (* TODO revisit - initiator/receiver expressions not verified*)
     let rec deref_helper ?(force_const = None) expr' ref_expr' prop' =
       match ref_expr'.data with
       | PropDeref (ref_expr_1', prop_1') -> begin
@@ -639,6 +652,8 @@ and typecheck_expr ?(force_const = false) (expr' : expr')
                  ~force_const:new_force_const
                  (label_ty_info.t_expr, false)
                  ref_expr')
+          | "initiator" -> Ok(set_ty_info (RecordTy [], true) ref_expr')
+          | "receiver" -> Ok(set_ty_info (RecordTy [], true) ref_expr')
           | _ -> Error [ (prop'.loc, no_such_event_property prop') ]
         end
         | Ok ({ t_expr = EventRefTy (label, is_ref_to_const); _ }, force_const)
@@ -654,6 +669,8 @@ and typecheck_expr ?(force_const = false) (expr' : expr')
                  ~force_const
                  (label_ty_info.t_expr, is_ref_to_const)
                  ref_expr')
+          | "initiator" -> Ok(set_ty_info (RecordTy [], true) ref_expr')
+          | "receiver" -> Ok(set_ty_info (RecordTy [], true) ref_expr')
           | _ -> Error [ (prop'.loc, no_such_event_property prop') ]
         end
         | Ok ({ t_expr = RecordTy ty_fields; _ }, force_const) -> begin
@@ -693,6 +710,9 @@ and typecheck_expr ?(force_const = false) (expr' : expr')
             set_ty_info ~force_const (event_ref_ty, is_const) ref_expr'
           in
           Ok (set_ty_info ~force_const (t_expr, is_const) expr')
+
+        | "initiator" -> Ok(set_ty_info (RecordTy [], true) ref_expr')
+        | "receiver" -> Ok(set_ty_info (RecordTy [], true) ref_expr')
         | _ -> Error [ (prop'.loc, no_such_event_property prop') ]
       end
       | Trigger label -> begin
@@ -711,6 +731,8 @@ and typecheck_expr ?(force_const = false) (expr' : expr')
             set_ty_info ~force_const (event_ref_ty, true) ref_expr'
           in
           Ok (set_ty_info ~force_const:(Some true) (t_expr, is_const) expr')
+        | "initiator" -> Ok(set_ty_info (RecordTy [], true) ref_expr')
+        | "receiver" -> Ok(set_ty_info (RecordTy [], true) ref_expr')
         | _ -> Error [ (prop'.loc, no_such_event_property prop') ]
       end
       | Record fields ->
