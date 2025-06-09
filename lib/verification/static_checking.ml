@@ -206,6 +206,7 @@ end = struct
 
   let or_list (lst : (cnf_formula, (loc * element_uid) list) leakError list) :
       (cnf_formula, (loc * element_uid) list) leakError =
+      
     let rec aux lst acc =
       match lst with
       | [] -> acc
@@ -224,9 +225,10 @@ end = struct
           | SAT -> aux xs acc)
         | SAT -> SAT)
     in
+  
     aux
       lst
-      (UNSAT [ (Nowhere, "Error while aggregating CNF formulas with OR") ])
+      (UNSAT [ (Nowhere, "[Error] While aggregating CNF formulas with OR") ])
 
   let empty mode : t =
     { symbolic_env = Env.empty
@@ -1251,7 +1253,18 @@ and check_less_or_equal_security_level (event_security : security_level)
                     (ctx1, SAT::list2)
                   else 
                     (ctx1, UNSAT[(Nowhere, "[Error] Comparing both security levels "^unp1 ^" <> "^unp2)]::list2)
-                | _ , _ ->  (ctx1, UNSAT[(Nowhere, "[Error] Comparing both security levels ")]::list2)
+                | Sec lvl , SecExpr exp2 -> 
+                  if relation then 
+                  (ctx1, UNSAT[(Nowhere, "[Error] Comparing both security levels, lvl with exp ")]::list2)
+                else 
+                  (ctx1, SAT::list2)
+              | SecExpr exp1 , Sec lvl ->
+                if relation then 
+                  (ctx1, SAT::list2)
+                else 
+                  (ctx1, UNSAT[(Nowhere, "[Error] Comparing both security levels, exp with lvl")]::list2)
+
+                (* | _ , _ ->  (ctx1, UNSAT[(Nowhere, "[Error] Comparing both security levels ")]::list2) *)
               end)
             (ctx1, []) event_security
         in
@@ -1539,13 +1552,15 @@ and filter_higher_levels (pc : sec_label' list) ctxt =
   let rec filter_levels (filtered : sec_label' list) = function
     | [] -> filtered
     | l :: ls ->
-      let filtered' =
+      let filtered':sec_label' list =
         List.filter
           (fun l' ->
-            match
+            begin match l.data, l'.data with
+            | Sec secl, Sec secl' -> 
+            begin match
               depth_first_search
-                l'
-                l
+                secl'
+                secl
                 !(ctxt.lattice)
                 []
                 ctxt.sec_params
@@ -1554,7 +1569,15 @@ and filter_higher_levels (pc : sec_label' list) ctxt =
                 ctxt.symbolic
             with
             | _, SAT -> false
-            | _ -> true)
+            | _ -> true 
+            end
+            | SecExpr expr, SecExpr expr2 -> String.compare (unparse_expr expr)
+              (unparse_expr expr2) = 0
+            | Sec _ , SecExpr _ -> true
+            | SecExpr _, Sec _ -> false
+            end
+          
+          )
           filtered
       in
       filter_levels (l :: filtered') ls

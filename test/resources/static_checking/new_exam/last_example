@@ -10,8 +10,8 @@ csm -->> {
   (rply: reply) (@trigger.initiator, @trigger.receiver) [?] [@Receiver(csm) -> @Initiator(csm)]
   ;
   rply -->> {
-    (yea: accept) (@trigger.initiator, @trigger.receiver) [?] [@Initiator(csm) -> @Receiver(csm)]
-    (nay: reject) (@trigger.initiator, @trigger.receiver) [?] [@Initiator(csm) -> @Receiver(csm)]
+    (yea: accept) (@trigger$csm.initiator, @trigger$csm.receiver) [?] [@Initiator(csm) -> @Receiver(csm)]
+    (nay: reject)  (@trigger$csm.initiator, @trigger$csm.receiver) [?] [@Initiator(csm) -> @Receiver(csm)]
     ;
     yea, nay -->% yea, nay
   }
