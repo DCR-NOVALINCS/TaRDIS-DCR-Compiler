@@ -4,7 +4,7 @@
    (:standard -warn-error -A))))
 
 (executable
- (public_name tardis)
- (name tardis_main)
- (modules tardis_main)
+ (public_name main)
+ (name main)
+ (modules main)
  (libraries str utils verification endpoint_projection translation))

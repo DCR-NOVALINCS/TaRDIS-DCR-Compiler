@@ -53,6 +53,7 @@ let prep_output_dir () =
       Sys.rmdir path
     | false -> Sys.remove path
   in
+  if Sys.file_exists output_dir then
   rmrf output_dir;
   Sys.mkdir output_dir 0o777
 

@@ -16,11 +16,17 @@ this project's dependencies
 opam switch create tardis_dcr_compiler ocaml.5.3.0
 ```
 
+```
+eval $(opam env --switch=tardis_dcr_compiler)
+```
+
 You may need to explicitly activate the newly created environment, setting it as the 
 currently selected switch, by running:
 ```
 opam switch tardis_dcr_compiler
 ```
+
+
 
 To confirm the switch is now active:
 ```
@@ -31,6 +37,11 @@ You can now leverage **Dune** and the project's **.opam** file to automatically 
 required dependencies:
 ```
 opam install . --deps-only
+```
+
+You may need to run **eval** again to refresh the environment variables of your shell:
+```
+eval $(opam env --switch=tardis_dcr_compiler)
 ```
 
 **Dune**, along with the remaining dependencies, should now be installed.
