@@ -1,0 +1,17 @@
+A(p1:String)
+B(p1:Integer; p3:String)
+C(p2:Integer)
+Public
+;
+Public flows A
+Public flows B
+Public flows C
+;
+
+(h:Hello) (Public) [?] [A(#p1 as X) -> B(p1=*; p3=X), C(p2=*)]
+;
+h -->> {
+  (ack:Reply) (Public) [?] [@Receiver(h) -> A(p1=X)]
+  ;
+  ack -->% ack
+}
