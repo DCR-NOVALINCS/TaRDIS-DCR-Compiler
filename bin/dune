@@ -8,3 +8,10 @@
  (name main)
  (modules main)
  (libraries str utils verification endpoint_projection translation))
+
+
+(executable
+ (name main_js)
+ (modules main_js)
+ (libraries str utils verification endpoint_projection translation)
+ (modes js))

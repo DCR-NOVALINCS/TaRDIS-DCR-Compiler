@@ -11,9 +11,9 @@ The suggested approach to set up the required dependencies and running the tool 
 Instructions on how to install opam can be found [here](https://opam.ocaml.org/doc/Install.html).
 
 From the root directory of this project, create a local OCaml environment (a *switch*) to manage 
-this project's dependencies
+this project's dependencies.
 ```
-opam switch create .
+opam update && opam switch create .
 ```
 
 To confirm the switch is now active:
