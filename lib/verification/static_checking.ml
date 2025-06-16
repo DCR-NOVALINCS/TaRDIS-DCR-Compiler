@@ -188,6 +188,8 @@ end = struct
 
   let and_list (lst : (cnf_formula, (loc * element_uid) list) leakError list) :
       (cnf_formula, (loc * element_uid) list) leakError =
+      print_endline " ====== [DEBUG start] AND List ===";
+      List.iter debug_map_list lst;
     let rec aux lst acc =
       match lst with
       | [] -> acc
@@ -206,7 +208,7 @@ end = struct
 
   let or_list (lst : (cnf_formula, (loc * element_uid) list) leakError list) :
       (cnf_formula, (loc * element_uid) list) leakError =
-      
+  
     let rec aux lst acc =
       match lst with
       | [] -> acc
@@ -222,7 +224,7 @@ end = struct
             let p : cnf_formula = cnf_or s s' in
             aux xs (Unknown p)
           | UNSAT _ -> Unknown s
-          | SAT -> aux xs acc)
+          | SAT -> SAT)
         | SAT -> SAT)
     in
   
@@ -344,7 +346,7 @@ end = struct
     | None ->
       Error
         ( Nowhere
-        , "Error in cnf sat solve: expression is unsat: "
+        , "[Error] Cnf sat solve: expression is unsat: "
           ^ unparse_cnf_formula new_cnf )
     | Some solver_cnf ->
       (* print_endline @@ "Solver cnf: " ^ unparse_cnf_formula solver_cnf; *)
@@ -460,7 +462,7 @@ end = struct
         | Error e ->
           Error
             (( loc
-             , "Error while adding dynamic flag in CnfExprCtxt: "
+             , "[Error] While adding dynamic flag in CnfExprCtxt: "
                ^ unparse_cnf_formula cnf )
             :: [ e ])
         | Ok symbolic -> Ok { ctxt with symbolic }
@@ -1213,7 +1215,24 @@ and check_security_event (ctxt : Ctxt.t) event =
 and check_less_or_equal_security_level (event_security : security_level)
     (env : node Env.t) (exp_security : security_level) (env2 : node Env.t)
     sec_params lattice symbolic_env relation =
+  (* let filter (sec1: sec_label') (sec2: sec_label') =
+    begin match sec1.data, sec2.data with
+    | Sec exp1, Sec exp2 -> 
+      let unp1 = unparse_sec_label' sec1 in
+      let unp2 = unparse_sec_label' sec2 in 
+      (String.compare unp1 unp2) = 0
+    | SecExpr exp1, SecExpr exp2 ->
+      let unp1 = unparse_expr exp1 in
+      let unp2 = unparse_expr exp2 in 
+      (String.compare unp1 unp2) = 0
+    | Sec _, SecExpr _ -> false
+    | SecExpr _, Sec _ -> false
+    | _ , _ -> false
+    end
+  in *)
     (*Lado de dentro esta no scope imediato*)
+  let first_list = ref event_security in
+  let snd_list = ref exp_security in
   let (new_ctxt, sat_list) :
       CnfExprCtxt.t * (cnf_formula, (loc * role_label) list) leakError list =
     List.fold_left
@@ -1244,7 +1263,9 @@ and check_less_or_equal_security_level (event_security : security_level)
                     env2
                     env
                     ctxt2
-                  in (ctxt3, list3 :: list2)
+                  in 
+           
+                     (ctxt3, list3 :: list2)
                 | SecExpr exp1 , SecExpr exp2 -> 
                   (* Alterar se for para usar runtime*)
                   let unp1 = unparse_expr exp1 in
@@ -1252,25 +1273,26 @@ and check_less_or_equal_security_level (event_security : security_level)
                   if (String.compare unp1 unp2) = 0 then  
                     (ctx1, SAT::list2)
                   else 
-                    (ctx1, UNSAT[(Nowhere, "[Error] Comparing both security levels "^unp1 ^" <> "^unp2)]::list2)
+                    (ctx1, UNSAT[(exp1.loc, "[Error] Comparing both security levels "^unp1 ^" <> "^unp2)]::list2)
                 | Sec lvl , SecExpr exp2 -> 
                   if relation then 
-                  (ctx1, UNSAT[(Nowhere, "[Error] Comparing both security levels, lvl with exp ")]::list2)
+                  (ctx1, UNSAT[(lvl.loc, "[Error] Comparing both security levels, lvl with exp ")]::list2)
                 else 
                   (ctx1, SAT::list2)
               | SecExpr exp1 , Sec lvl ->
                 if relation then 
                   (ctx1, SAT::list2)
                 else 
-                  (ctx1, UNSAT[(Nowhere, "[Error] Comparing both security levels, exp with lvl")]::list2)
+                  (ctx1, UNSAT[(exp1.loc, "[Error] Comparing both security levels, exp with lvl")]::list2)
 
                 (* | _ , _ ->  (ctx1, UNSAT[(Nowhere, "[Error] Comparing both security levels ")]::list2) *)
               end)
-            (ctx1, []) event_security
+            (ctx1, []) !first_list
         in
-        (resCtxt, CnfExprCtxt.or_list resList :: list))
+        let resolve_or:(cnf_formula, (loc * role_label) list) leakError list = [CnfExprCtxt.or_list (resList@list)] in
+        (resCtxt,resolve_or))
       (symbolic_env, [])
-      exp_security
+      !snd_list
   in
   (new_ctxt, CnfExprCtxt.and_list sat_list)
 
