@@ -2025,8 +2025,11 @@ let rec project (program : Choreo.program)
     List.map (ProjectionContext.init ifc_constraints_by_uid) program.roles
   in
   List.fold_left project_role [] init_ctxts
-  (* TODO [refactoring] hide access to stack-like structure; 
-    encapsulate within ProjectionContext *)
+  |> List.filter (fun ctxt -> 
+    (* TODO [refactoring] hide access to stack-like structure; 
+      encapsulate within ProjectionContext *)
+    let projection = List.hd ctxt.ProjectionContext.projection in
+    (not (List.is_empty projection.events) || (not (List.is_empty projection.relations))))
   |> List.map (fun ctxt ->
          to_endpoint ctxt (List.hd ctxt.ProjectionContext.projection))
 
