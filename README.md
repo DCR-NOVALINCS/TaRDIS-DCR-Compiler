@@ -16,7 +16,7 @@ this project's dependencies.
 opam update && opam switch create .
 ```
 
-To confirm the switch is now active:
+The switch should now be active, which can be confirmed by the output of:
 ```
 opam switch
 ```
@@ -25,25 +25,25 @@ opam switch
 
 ### Building
  
-To build the project:
+To build/rebuid the project:
 ```
 dune build
 ```
 
-To clean up the artifacts from a previous build
+To remove artifacts from a previous build:
 ```
 dune clean
 ```
 
 ### Running
 
-After building, the compiler can be tested with one of the choreography examples available in 
+The compiler can be tested with one of the choreography examples available in 
 the **examples** folder:
 ```
 dune exec main < ./examples/hello_swarm
 ```
 
 To run the test suite:
-```bash
+```
 dune runtest
 ```

@@ -7,7 +7,8 @@ open Choreo
 module StringMap = Map.Make (String)
 module StringSet = Set.Make (String)
 
-let err_t_ambiguous_dep_on_dual_event = "[Failed projectability-check: ambiguous data-dependency on dual event]"
+let err_t_ambiguous_dep_on_dual_event =
+  "[Failed projectability-check: ambiguous data-dependency on dual event]"
 
 let rec peek : 'a. 'a list -> 'a = fun stack -> List.hd stack
 
@@ -21,7 +22,7 @@ and update_top : ('a -> 'a) -> 'a list -> 'a list =
   let top, tl = pop stack in
   push (update top) tl
 
-(* TODO refactor - possibly send to list-utils/common *)
+(* TODO refactor *)
 
 (** [list_combine f [a1; ...; an] [b1; ...; bm]] returns the list
     [[f a1 b1; f a1 b2; ...; f an bm]], resulting from applying function [f] to
@@ -1093,12 +1094,6 @@ end
 
 (* event processing on "the way down" the recursion *)
 
-(* DEBUGS *)
-(* print_endline
-   @@ Printf.sprintf
-        "@project_event: %s"
-        (unparse_constrained_role (StringMap.find "P" constrained_initrs)); *)
-
 (* verify that every param is assigned once *)
 let rec verify_clash_free_assignment (constrained_roles : CnfUserset.t) =
   let bind_new sym assigned =
@@ -1188,25 +1183,11 @@ and check_data_dependency (e0 : EventCtxt.t) (e1 : EventCtxt.t) =
   and e1_base_init = EventCtxt.base_initiators e1
   and e1_base_rcv = EventCtxt.base_receivers e1
   and e1_base_participants = EventCtxt.base_participants e1 in
-  (* print_endline
-  @@ Printf.sprintf
-       "=depended_base_init=\n%s"
-       (CnfUserset.to_string e1_base_init);
-  print_endline
-  @@ Printf.sprintf
-       "=depended_base_rcv=\n%s\n"
-       (CnfUserset.to_string e1_base_rcv);
-  print_endline
-  @@ Printf.sprintf
-       "=depended_base_participants=\n%s\n"
-       (CnfUserset.to_string e1_base_participants); *)
   (* 1. every potential initiator of e0 must participate in e1 *)
   if not @@ CnfUserset.is_subset e0_base_init e1_base_participants then
     let err_msg = err_msg_on_direct_dependency_may_not_be_visibile e0 e1 in
     Error [ (e0.event'.loc, err_msg) ]
-    (* print_endline
-      "\n   !! FAIL: value-dep not every initiator sees dependency event\n\n";
-    assert false 2. no initiator of e0 may "see" e1 as a dual event *)
+    (* no initiator of e0 may "see" e1 as a dual event *)
   else
     let duals =
       StringMap.filter
@@ -1217,32 +1198,13 @@ and check_data_dependency (e0 : EventCtxt.t) (e1 : EventCtxt.t) =
     if not @@ CnfUserset.is_empty duals then
       let err_msg = on_err_ambiguous_data_dependency e0 e1 in
       Error [ (e0.event'.loc, err_msg) ]
-      (* print_endline
-        "\n\
-        \   !! FAIL: value-dep some initiators see a dual dependency event\n\n";
-      assert false *)
     else Ok e0
-
-(* if
-    not @@ CnfUserset.is_empty
-    @@ CnfUserset.resolve_intersection
-         (CnfUserset.resolve_intersection e1_base_init e1_base_rcv)
-         e0_base_init
-  then (
-    print_endline
-      "\n   !! FAIL: value-dep some initiators see a dual dependency event\n\n";
-    assert false) *)
-
 (* process events and run pre-checks on "scope visibility" and data dependencies
    (so called, direct dependencies are checked on the recursion's way back up) *)
 and process_events (ctxt : Context.t) (events : Choreo.event' list) =
   let open Verification.Preprocessing in
   (* encode event and update context accordingly *)
   let rec process_event (ctxt : Context.t) (event' : Choreo.event') =
-    (* print_endline
-    @@ Printf.sprintf
-         "Context on processing event is: %s"
-         (Context.to_string ctxt); *)
     (* collect user-set expressions *)
     let uid = Option.get !(event'.uid)
     and id = (fst event'.data.info.data).data in
@@ -1260,32 +1222,17 @@ and process_events (ctxt : Context.t) (events : Choreo.event' list) =
         ~initiator
         ~receivers
     in
-    (* print_endline "\n>>>>>>>>>>>>>> @projectability.ml [processed event] ";
-    print_endline @@ EventCtxt.to_string event_ctxt;
-    print_endline "<<<<<<<<<<<<<< "; *)
     let ctxt = Context.on_event trigger_ctxt event_ctxt ctxt in
-    (* print_endline
-       @@ Printf.sprintf
-            "@projectability.ml [Context after event processing]\n %s\n"
-            (Context.to_string ctxt); *)
     (ctxt, event_ctxt)
   (* projectability check *)
   and check_event (ctxt : Context.t) (event' : Choreo.event') =
     let ctxt, event_ctxt = process_event ctxt event' in
-    let event_id = event_ctxt.id in
-    (* print_endline @@ Printf.sprintf "\nChecking event %s: \n" event_id; *)
+    (* let event_id = event_ctxt.id in *)
     (* users "participating" in the current scope *)
     let participants_in_scope =
       TriggerCtxt.participants_in_scope ctxt.Context.trigger_ctxt
     (* event's "base" participants - all potential initiators and receivers *)
     and event_base_participants = EventCtxt.base_participants event_ctxt in
-
-    (* print_endline "participants in scope:";
-    print_endline @@ CnfUserset.to_string participants_in_scope;
-    print_endline "----";
-    print_endline "event base participants";
-    print_endline @@ CnfUserset.to_string event_base_participants;
-    print_endline "\n"; *)
     if not @@ CnfUserset.is_subset event_base_participants participants_in_scope
     then (
       (* not all of the event's "base" participants are in scope (visible) *)
@@ -1298,11 +1245,12 @@ and process_events (ctxt : Context.t) (events : Choreo.event' list) =
              not in scope" )
         ])
     else
-      let uid = event_ctxt.uid in
       (* TODO only collecting value-based data dependencies for now - not yet
          sure how to constrain the program to handle event-type dependencies *)
-      (* DO NOT discard - see comment in duplicate below *)
-      let data_dependencies =
+      (* !! DO NOT discard the following block - see comment in duplicate below *)
+      (*  *)
+      (* let _uid = event_ctxt.uid in
+       let data_dependencies =
         (StringMap.find uid ctxt.event_nodes_by_uid).data_dependency
         |> ( function
         | Some (ValueDependency deps) ->
@@ -1312,18 +1260,14 @@ and process_events (ctxt : Context.t) (events : Choreo.event' list) =
         | _ -> [] )
         |> List.map (fun uid -> Env.find_flat uid ctxt.event_ids_by_uid)
         |> List.map (fun id -> Env.find_flat id ctxt.event_ctxt_by_id)
-      in
+      in *)
+      (*  *)
       (* OBSERVATION temporary override of data_dependencies as they should be
       TODO eventually remove collect_event_dependencies and rely on 
       preprocessing *)
       let data_dependencies = collect_event_dependencies ctxt event' in
       fold_left_error check_data_dependency event_ctxt data_dependencies
       >>= fun _ -> Ok ctxt
-    (* List.iter
-        (fun dep -> check_data_dependency event_ctxt dep)
-        data_dependencies;
-      Ok ctxt *)
-    (* TODO include data-dependency checks - can probably be done here *)
   in
   fold_left_error check_event ctxt events
 
@@ -1336,19 +1280,10 @@ and check_relations (ctxt : Context.t) (relations : Choreo.relation' list) =
     let src_ctxt = Context.find_event_ctxt_by_id src_id ctxt
     and tgt_ctxt = Context.find_event_ctxt_by_id tgt_id ctxt in
     let src_base_participants = EventCtxt.base_participants src_ctxt in
-    (* print_endline "\n-------------------";
-    print_endline "src_base_participants:";
-    print_endline @@ CnfUserset.to_string src_base_participants; *)
     let tgt_base_initiators = EventCtxt.base_initiators tgt_ctxt in
-    (* print_endline "tgt_base_initiators:";
-    print_endline @@ CnfUserset.to_string tgt_base_initiators; *)
     let observers =
       CnfUserset.resolve_intersection src_base_participants tgt_base_initiators
     in
-
-    (* print_endline "observers:";
-    print_endline @@ CnfUserset.to_string observers;
-    print_endline "-------------------\n"; *)
     if CnfUserset.is_empty observers then (
       (* TODO result.error *)
       print_endline "\n\n  !FAIL [redundant relation - applicable nowhere]\n\n";
@@ -1360,10 +1295,6 @@ and check_relations (ctxt : Context.t) (relations : Choreo.relation' list) =
       | _ -> Ok ()
   (* e0 --> e1 --> e2 *)
   and check_transitive_dependency ~r1 ~r2 =
-    (* print_string "checking transitive dependency: from ";
-    print_string @@ Printf.sprintf "{src:%s; tgt:%s} " r1.src_id r1.tgt_id;
-    print_string "to";
-    print_endline @@ Printf.sprintf "{src:%s; tgt:%s}" r2.src_id r2.tgt_id; *)
     (* initiators of e2 that observe e1, must also observe e0 *)
     let e0_ctxt = Context.find_event_ctxt_by_id r1.src_id ctxt
     and e1_ctxt = Context.find_event_ctxt_by_id r2.src_id ctxt
@@ -1403,10 +1334,6 @@ and check_relations (ctxt : Context.t) (relations : Choreo.relation' list) =
           { src_id; tgt_id; rel_type }
           ctxt.dependencies
       in
-      (* print_string
-      @@ Printf.sprintf
-           "%s "
-           (Tardis.Unparser.unparse_relations "" false [ annotate rel ]); *)
       let _ = check_plain_dependency ~src_id ~tgt_id ~rel_type in
       (* we can check relations as they appear *)
       (* 1. check relation itself - based on src-tgt EventCtxt.t *)
@@ -1420,8 +1347,6 @@ and check_relations (ctxt : Context.t) (relations : Choreo.relation' list) =
               ~exec_based_rel:rel_t
               dependencies
           and r1 = rel_t in
-          (* print_string "number of state-based deps returned ";
-          print_endline @@ Int.to_string (List.length state_based_deps); *)
           iter_left_error
             (fun r2 -> check_transitive_dependency ~r1 ~r2)
             state_based_deps
@@ -1432,13 +1357,10 @@ and check_relations (ctxt : Context.t) (relations : Choreo.relation' list) =
               ~state_based_rel:rel_t
               dependencies
           and r2 = rel_t in
-          (* print_string "number of exec-based deps returned "; *)
-          (* print_endline @@ Int.to_string (List.length exec_based_deps); *)
           iter_left_error
             (fun r1 -> check_transitive_dependency ~r1 ~r2)
             exec_based_deps
           >>= fun () -> Ok ctxt
-        (* assert false *)
       in
       Ok { ctxt with dependencies }
     | _ -> Ok ctxt
@@ -1483,13 +1405,13 @@ and collect_event_dependencies (ctxt : Context.t) (event' : event') =
     in
     (* collect dependencies within a security label *)
     let collect_label_deps acc sec_label' =
-      begin match sec_label'.data with
-      | Sec sec ->
-        let _, params = sec.data in
-        List.fold_left collect_param_deps acc params
-      | SecExpr expr' ->
-        collect_expr_dependencies expr' @ acc
-      end 
+      begin
+        match sec_label'.data with
+        | Sec sec ->
+          let _, params = sec.data in
+          List.fold_left collect_param_deps acc params
+        | SecExpr expr' -> collect_expr_dependencies expr' @ acc
+      end
     in
     List.fold_left collect_label_deps [] event'.data.security_level.data
   in
@@ -1546,8 +1468,8 @@ and on_err_ambiguous_data_dependency (src : EventCtxt.t) (target : EventCtxt.t)
     =
   Printf.sprintf
     "%s\n\
-    \  At least one initiator of event '%s' (%s) sees event '%s' (%s) as a dual \
-     event, making the data-dependency ambiguous.\n\
+    \  At least one initiator of event '%s' (%s) sees event '%s' (%s) as a \
+     dual event, making the data-dependency ambiguous.\n\
     \    (suggestion: consider using a spawn instead)."
     err_t_ambiguous_dep_on_dual_event
     src.id
@@ -1562,17 +1484,11 @@ and on_err_ambiguous_data_dependency (src : EventCtxt.t) (target : EventCtxt.t)
 let check (program : Choreo.program)
     (typecheck_res : Verification.Typing.typecheck_result) =
   let top_level_userset = CnfUserset.of_role_decls program.roles in
-  (* let dependency_graph = preprocess_program program in *)
   let dependency_graph = DependencyGraph.empty in
-  (* print_endline @@ DependencyGraph.to_string dependency_graph; *)
-  (* TODO remove debug *)
-  (* print_endline "[debug @projectability.ml] userset on entry";
-     print_endline @@ CnfUserset.to_string top_level_userset; *)
   let ctxt =
     Context.init
       top_level_userset
       typecheck_res.event_nodes_by_uid
       dependency_graph
   in
-  (* print_endline @@ Printf.sprintf "init context:\n%s" (Context.to_string ctxt); *)
   check_spawn_program program.spawn_program ctxt
