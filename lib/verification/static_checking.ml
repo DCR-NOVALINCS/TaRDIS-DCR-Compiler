@@ -188,8 +188,7 @@ end = struct
 
   let and_list (lst : (cnf_formula, (loc * element_uid) list) leakError list) :
       (cnf_formula, (loc * element_uid) list) leakError =
-      print_endline " ====== [DEBUG start] AND List ===";
-      List.iter debug_map_list lst;
+
     let rec aux lst acc =
       match lst with
       | [] -> acc
@@ -432,8 +431,8 @@ end = struct
       | Hybrid -> Ok new_expr_map
       | Static ->
         if new_expr_map = TreeMap.empty then Ok new_expr_map
-        else Error [ (Nowhere, "Error Static: verification not possible") ]
-      | Dynamic -> Error [ (Nowhere, " Dynamic not implemented") ]
+        else Error [ (Nowhere, "[Error] Static verification not possible") ]
+      | Dynamic -> Error [ (Nowhere, " Dynamic verification not implemented") ]
     end
 
   let begin_scope trigger ctxt =
@@ -491,7 +490,7 @@ end = struct
       else if List.length env = 0 then
         Error
           [ ( Nowhere
-            , "Error while trying to find an environment with depth "
+            , "[Error] While trying to find an environment with depth "
               ^ string_of_int depth )
           ]
       else aux (Env.end_scope env) (depth - 1)
@@ -547,18 +546,18 @@ end = struct
       | LessThan, Int n1, Int n2 -> Bool (n1 < n2)
       | And, Bool b1, Bool b2 -> Bool (b1 && b2)
       | Or, Bool b1, Bool b2 -> Bool (b1 || b2)
-      | _ -> failwith ("    Invalid binary operation: " ^ unparse_expr expr))
+      | _ -> failwith ("Invalid binary operation: " ^ unparse_expr expr))
     | UnaryOp (exp, op) -> (
       match (op, evalExpr exp env) with
       | Minus, Int n -> Int (-n)
       | Negation, Bool b -> Bool (not b)
-      | _ -> failwith ("    Invalid unary operation" ^ unparse_expr expr))
+      | _ -> failwith ("Invalid unary operation" ^ unparse_expr expr))
     | PropDeref (e, prop) -> (
       let rec evalProp e prop env : ('a, 'b) resultExpr =
         match e.data with
         | Trigger t -> (
           match Env.find_flat_opt t env with
-          | None -> Error (e.loc, "   Trigger event does not exist")
+          | None -> Error (e.loc, "[Error] Trigger event does not exist")
           | Some node -> (
             match node.io with
             | Input _ -> Unknown
@@ -566,7 +565,7 @@ end = struct
             | Computation expr -> Ok (expr, node.env)))
         | EventRef e -> (
           match Env.find_flat_opt e.data env with
-          | None -> Error (e.loc, "   Event does not exist")
+          | None -> Error (e.loc, "[Error] Event does not exist")
           | Some node -> (
             match node.io with
             | Input _ -> assert false
@@ -587,7 +586,7 @@ end = struct
               | None ->
                 Error
                   ( e.loc
-                  , "Error in propDeref: Record entry not found: " ^ prop.data
+                  , "[Error] In propDeref: Record entry not found: " ^ prop.data
                   )
               | Some s ->
                 let _, expr = s.data in
@@ -597,9 +596,9 @@ end = struct
           | Error err ->
             Error
               ( fst err
-              , "   Error in evaluating dereference value: " ^ prop2.data ^ "\n"
+              , "   [Error] Evaluating dereference value: " ^ prop2.data ^ "\n"
                 ^ snd err ))
-        | _ -> Error (e.loc, "    Invalid property dereference")
+        | _ -> Error (e.loc, "[Error] Invalid property dereference")
       in
       match evalProp e prop env with
       | Ok (expr, env2) -> evalExpr expr env2
@@ -639,7 +638,7 @@ and build_lattice (roles : value_dep_role_decl' list)
     | None ->
       Error
         [ ( left.loc
-          , "Error building the lattice in edge: " ^ left.data ^ " -> "
+          , "[Error] Building the lattice in edge: " ^ left.data ^ " -> "
             ^ right.data )
         ]
   in
@@ -741,13 +740,13 @@ and get_security_of_expr (ctxt : Ctxt.t) expr =
     match get_security_of_expr ctxt e1 with
     | Error e ->
       Error
-        ((e1.loc, "Error getting security level of expr: " ^ unparse_expr e1)
+        ((e1.loc, "[Error] Getting security level of expr: " ^ unparse_expr e1)
         :: e)
     | Ok pc1 -> (
       match get_security_of_expr ctxt e2 with
       | Error e ->
         Error
-          ((e2.loc, "Error getting security level of expr: " ^ unparse_expr e2)
+          ((e2.loc, "[Error] Getting security level of expr: " ^ unparse_expr e2)
           :: e)
       | Ok pc2 -> Ok (get_levels_from_SC_List filter_higher_levels pc1 pc2 ctxt)
       ))
@@ -755,12 +754,12 @@ and get_security_of_expr (ctxt : Ctxt.t) expr =
   | EventRef id -> (
     match Env.find_flat_opt id.data ctxt.env with
     | None ->
-      Error [ (id.loc, "Error getting security level of event: " ^ id.data) ]
+      Error [ (id.loc, "[Error] Getting security level of event: " ^ id.data) ]
     | Some node -> Ok node.security_list)
   | Trigger t -> (
     match Env.find_flat_opt t ctxt.env with
     | None ->
-      Error [ (expr.loc, "Error getting security level of trigger: " ^ t) ]
+      Error [ (expr.loc, "[Error] Getting security level of trigger: " ^ t) ]
     | Some sec_node -> Ok sec_node.security_list)
   | PropDeref (expr, _) -> get_security_of_expr ctxt expr
   | List list ->
@@ -786,7 +785,7 @@ and check_security_relation (ctxt : Ctxt.t) cr =
     | Error e ->
       Error
         (( cr.loc
-         , "  Error in control relation checking guard expression: "
+         , "[Error]In control relation checking guard expression: "
            ^ unparse_expr exp )
         :: e)
     | Ok security_level -> (
@@ -796,13 +795,13 @@ and check_security_relation (ctxt : Ctxt.t) cr =
       | None, _ ->
         Error
           [ ( cr.loc
-            , " Error in control relation finding first event in " ^ e1.data
+            , "[Error]In control relation finding first event in " ^ e1.data
               ^ "flows" ^ e2.data )
           ]
       | _, None ->
         Error
           [ ( cr.loc
-            , " Error in control relation finding second event in " ^ e1.data
+            , "[Error]In control relation finding second event in " ^ e1.data
               ^ "flows" ^ e2.data )
           ]
       | Some node1, Some node2 -> (
@@ -822,7 +821,7 @@ and check_security_relation (ctxt : Ctxt.t) cr =
           | _, UNSAT e ->
             Error
               (( cr.loc
-               , "  Error information leak: In control relation " ^ e1.data
+               , "[Error]Information leak in control relation " ^ e1.data
                  ^ "("
                  ^ unparse_security_level' node1.security_list
                  ^ ") -> " ^ e2.data ^ " ("
@@ -835,7 +834,7 @@ and check_security_relation (ctxt : Ctxt.t) cr =
               !(cr.uid)
               cr.loc
               (cnf_and cond e)
-              " Error in control relation: Invalid relation uuid while adding \
+              "[Error]In control relation: Invalid relation uuid while adding \
                dynamic flag in Unknown"
               ctxt
           | symbolic, SAT ->
@@ -844,7 +843,7 @@ and check_security_relation (ctxt : Ctxt.t) cr =
               !(cr.uid)
               cr.loc
               cond
-              " Error in control relation: Invalid relation uuid while adding \
+              "[Error]In control relation: Invalid relation uuid while adding \
                dynamic flag in SAT"
               ctxt
         in
@@ -863,7 +862,7 @@ and check_security_relation (ctxt : Ctxt.t) cr =
         | _, UNSAT e ->
           Error
             (( cr.loc
-             , "  Error information leak in control relation: event to \
+             , "[Error]Information leak in control relation: event to \
                 expression ("
                ^ unparse_security_level' node1.security_list
                ^ ") -> " ^ " ("
@@ -905,7 +904,7 @@ and check_security_relation (ctxt : Ctxt.t) cr =
         | _, UNSAT e ->
           Error
             (( exp.loc
-             , "  Error in event " ^ event.data ^ " expression "
+             , "[Error]In event " ^ event.data ^ " expression "
                ^ unparse_expr exp ^ " in spawn" )
             :: e)
         | symbolic, Unknown e -> begin
@@ -914,13 +913,13 @@ and check_security_relation (ctxt : Ctxt.t) cr =
               !(cr.uid)
               cr.loc
               e
-              " Error in control relation: Invalid relation uuid in Spawn"
+              "[Error]In control relation: Invalid relation uuid in Spawn"
               { ctxt with symbolic }
           with
           | Error e ->
             Error
               (( exp.loc
-               , "  Error in event " ^ event.data ^ " expression "
+               , "[Error]In event " ^ event.data ^ " expression "
                  ^ unparse_expr exp ^ " in spawn" )
               :: e)
           | Ok ctxt2 -> spawn_creation ctxt2
@@ -1215,22 +1214,6 @@ and check_security_event (ctxt : Ctxt.t) event =
 and check_less_or_equal_security_level (event_security : security_level)
     (env : node Env.t) (exp_security : security_level) (env2 : node Env.t)
     sec_params lattice symbolic_env relation =
-  (* let filter (sec1: sec_label') (sec2: sec_label') =
-    begin match sec1.data, sec2.data with
-    | Sec exp1, Sec exp2 -> 
-      let unp1 = unparse_sec_label' sec1 in
-      let unp2 = unparse_sec_label' sec2 in 
-      (String.compare unp1 unp2) = 0
-    | SecExpr exp1, SecExpr exp2 ->
-      let unp1 = unparse_expr exp1 in
-      let unp2 = unparse_expr exp2 in 
-      (String.compare unp1 unp2) = 0
-    | Sec _, SecExpr _ -> false
-    | SecExpr _, Sec _ -> false
-    | _ , _ -> false
-    end
-  in *)
-    (*Lado de dentro esta no scope imediato*)
   let first_list = ref event_security in
   let snd_list = ref exp_security in
   let (new_ctxt, sat_list) :
@@ -1284,8 +1267,6 @@ and check_less_or_equal_security_level (event_security : security_level)
                   (ctx1, SAT::list2)
                 else 
                   (ctx1, UNSAT[(exp1.loc, "[Error] Comparing both security levels, exp with lvl")]::list2)
-
-                (* | _ , _ ->  (ctx1, UNSAT[(Nowhere, "[Error] Comparing both security levels ")]::list2) *)
               end)
             (ctx1, []) !first_list
         in
@@ -1344,20 +1325,6 @@ and depth_first_search (node1 : sec_label_param' parameterisable_role') (node2 :
       visited
       []
       symbolic
-    (* | SecExpr exp1, SecExpr exp2 ->
-      let symbolic1 = unparse_expr exp1 in
-      let symbolic2 = unparse_expr exp2 in
-      if String.compare symbolic1 symbolic2 = 0 then
-        (symbolic, SAT)
-      else
-        (symbolic, UNSAT[(sec1.loc, "[Error] Comparing SecExpr: " ^ symbolic1
-          ^ " and " ^ symbolic2)])
-    (* | Sec _ , SecExpr _ -> 
-      (symbolic, UNSAT[(sec1.loc, "[Error] Not implemented: Comparing SecExpr")]) *)
-    | _, _ -> 
-      (symbolic, UNSAT[(sec1.loc, "[Error] Comparing security levels: "
-        ^ unparse_sec_label' sec1 ^ " and " ^ unparse_sec_label' sec2)]) *)
-  (* end *)
 
 and compareSecurityLevels (node1 : sec_label_param' parameterisable_role') (node2 : sec_label_param' parameterisable_role') params env
     env2 symbolic =
@@ -1400,7 +1367,7 @@ and compareSecurityLevels (node1 : sec_label_param' parameterisable_role') (node
                 ( ctxt
                 , UNSAT
                     [ ( exp1.loc
-                      , " [Error] Expected two identical integers, actual \
+                      , "[Error] Expected two identical integers, actual \
                          values: " ^ unparse_expr exp1 ^ " = "
                         ^ unparse_expr exp2 )
                     ]
@@ -1411,7 +1378,7 @@ and compareSecurityLevels (node1 : sec_label_param' parameterisable_role') (node
                 ( ctxt
                 , UNSAT
                     [ ( exp1.loc
-                      , " [Error] Expected two identical strings, got: "
+                      , "[Error] Expected two identical strings, got: "
                         ^ unparse_expr exp1 ^ " = " ^ unparse_expr exp2 )
                     ]
                   :: list )
@@ -1420,7 +1387,7 @@ and compareSecurityLevels (node1 : sec_label_param' parameterisable_role') (node
               ( ctxt
               , UNSAT
                   [ ( exp1.loc
-                    , " [Error] Expected two identical strings, got: "
+                    , "[Error] Expected two identical strings, got: "
                       ^ unparse_expr exp1 ^ " = " ^ unparse_expr exp2 )
                   ; s
                   ]
@@ -1429,7 +1396,7 @@ and compareSecurityLevels (node1 : sec_label_param' parameterisable_role') (node
               ( ctxt
               , UNSAT
                   [ ( exp2.loc
-                    , " [Error] Processing the second expression: "
+                    , "[Error] Processing the second expression: "
                       ^ unparse_expr exp1 ^ " = " ^ unparse_expr exp2 )
                   ; s2
                   ]
@@ -1459,7 +1426,7 @@ and compareSecurityLevels (node1 : sec_label_param' parameterisable_role') (node
               ( ctxt
               , UNSAT
                   [ ( exp1.loc
-                    , " [Error] Comparing missmatch types exprs: "
+                    , "[Error] Comparing missmatch types exprs: "
                       ^ unparse_expr exp1 ^ " = " ^ unparse_expr exp2 )
                   ]
                 :: list ))
@@ -1543,31 +1510,6 @@ and get_levels_from_SC_List filter_function (pc_list : security_level)
    (teacher, admin) = academic manager *)
 (* Get the bottom levels of the list (least upper bound) Retorna todos os nos
    que têm caminho para outros*)
-(* and filter_lower_levels (pc : sec_label' list) ctxt =
-   let rec filter_levels (filtered : sec_label' list) = function
-     | [] -> filtered
-     | l :: ls ->
-       let filtered' =
-         List.filter
-           (fun l' ->
-             match
-               depth_first_search
-                 l
-                 l'
-                 !(ctxt.lattice)
-                 []
-                 ctxt.sec_params
-                 ctxt.env
-                 ctxt.env
-             with
-             | SAT -> false
-             | _ -> true)
-           filtered
-       in
-       filter_levels (l :: filtered') ls
-   in
-   filter_levels [] pc *)
-
 (* Get the bottom levels of the list (least upper bound)   with tweaks *)
 (*Retorna os nós que não têm caminhos*)
 and filter_higher_levels (pc : sec_label' list) ctxt =
