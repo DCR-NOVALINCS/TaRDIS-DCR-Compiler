@@ -1,7 +1,10 @@
 (env
  (dev
   (flags
-   (:standard -warn-error -A))))
+   (:standard -warn-error -A)))
+ (release
+  (ocamlopt_flags (:standard -O3)))
+  )
 
 (executable
  (public_name main)

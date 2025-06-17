@@ -216,7 +216,7 @@ end = struct
       incr counter;
       !counter
 
-  let rec next_trigger_val_sym () =
+  let next_trigger_val_sym () =
     Printf.sprintf "%s%d" trigger_sym_val_prefix @@ next_int ()
 
   and next_param_val_sym () =
@@ -347,7 +347,7 @@ end = struct
   let find_trigger_ctxt (event_id : event_id) (t : t) = List.assoc event_id t
 
   let to_string t =
-    let rec participant_map_to_str map =
+    let participant_map_to_str map =
       StringMap.bindings map
       |> List.map (fun (_, role) ->
              Printf.sprintf "  %s" (CnfRole.to_string role))
@@ -524,27 +524,13 @@ end = struct
     if role_label left <> role_label right then
       raise @@ Internal_error "Expecting arguments of same role"
     else
-      let sprintf = Printf.sprintf in
-
-      (* let group =
-        Option.get @@ CnfRole.resolve_role_union left.group right.group in
-      let all_sat = CnfRole.all_sat group in
-      List.iter (fun r -> CnfRole.to_string r |> print_endline) all_sat;
-      assert false; *)
       (* note: we know what we encoded, this must result in a valid role *)
-
-      (* assert false; *)
       let base =
         Option.get @@ CnfRole.resolve_role_union left.base right.base
       in
-      (* print_endline @@ sprintf "\nbase:\n%s\n"
-      @@ CnfRole.to_string ~indent:"  " base; *)
-
       let group =
         Option.get @@ CnfRole.resolve_role_union left.group right.group
       in
-      (* print_endline @@ sprintf "\ngroup:\n%s\n"
-      @@ CnfRole.to_string ~indent:"  " group; *)
       let free_params_common =
         StringSet.inter (_extract_free_params left) (_extract_free_params right)
       in
@@ -555,9 +541,6 @@ end = struct
           (* unify free params under common param_sym  *)
           Option.get @@ CnfRole.resolve_role_union left.users right.users
       in
-      (* print_endline @@ sprintf "\nusers:\n%s\n"
-      @@ CnfRole.to_string ~indent:"  " users; *)
-
       let defined_aliases =
         StringMap.union
           (fun _ v _ -> Some v)
@@ -882,7 +865,7 @@ end = struct
 
   (* tmp debug *)
   let to_string ?(indent = "") t =
-    let rec sprintf = Printf.sprintf
+    let sprintf = Printf.sprintf
     and participant_map_to_str participants =
       StringMap.bindings participants
       |> List.map (fun (_, role_ctxt) ->
@@ -923,7 +906,7 @@ end
    handle static verification of bindings, where we conservatively interpret
    different symbols as an indication of distinct values. *)
 
-let rec cnf_unique_param_assignment cnf_sol =
+let cnf_unique_param_assignment cnf_sol =
   let resolve_assignment param_sym assigned ok_status =
     if StringSet.mem param_sym assigned then (assigned, false)
     else (StringSet.add param_sym assigned, ok_status)
@@ -975,7 +958,7 @@ module Context : sig
       [event_nodes_by_uid] (global) previously collected information for every
       event node in the program (does not change)
 
-      [dependencies] [WIP] *)
+      [dependencies] *)
   type t =
     { event_ctxt_by_id : EventCtxt.t Env.t
     ; event_ids_by_uid : event_id Env.t
@@ -983,7 +966,6 @@ module Context : sig
     ; event_participants_by_uid : CnfUserset.t
     ; event_nodes_by_uid : Verification.Typing.event_node StringMap.t
     ; dependencies : DependencyGraph.t
-          (* ; decl_param_types_by_role : type_expr StringMap.t StringMap.t *)
     }
 
   val init :
@@ -1101,7 +1083,7 @@ let rec verify_clash_free_assignment (constrained_roles : CnfUserset.t) =
       Error [ (Nowhere, "Potentially conflicting assignment to " ^ sym) ]
     else Ok (StringSet.add sym assigned)
   in
-  let rec verify_clash_free_assignment assigned = function
+  let verify_clash_free_assignment assigned = function
     | [] -> Ok assigned
     | [ Positive (CnfEq (sym, _)) ] -> bind_new sym assigned
     | [ Positive (CnfSymEq (sym1, sym2)) ] ->
@@ -1109,7 +1091,7 @@ let rec verify_clash_free_assignment (constrained_roles : CnfUserset.t) =
           bind_new sym2 assigned)
     | _ -> Ok assigned
   in
-  let rec verify_clash_free_role acc cnf_role =
+  let verify_clash_free_role acc cnf_role =
     let { label; encoding; _ } : CnfRole.t = cnf_role in
     Result.map_error
       (fun err ->
@@ -1324,7 +1306,7 @@ and check_relations (ctxt : Context.t) (relations : Choreo.relation' list) =
     Called on the recursion's way down, where spawns must be processed
     according to this view. *)
   and process_ctrl_flow_rels (ctxt : Context.t) = function
-    | ControlRelation (src_id', _expr', tgt_id', rel_type') as rel ->
+    | ControlRelation (src_id', _expr', tgt_id', rel_type') as _rel ->
       let src_id, tgt_id, rel_type =
         (src_id'.data, tgt_id'.data, rel_type'.data)
       in

@@ -706,7 +706,7 @@ and typecheck_expr ?(force_const = false) (expr' : expr')
             Option.get !(event_node.event'.data.data_expr.ty)
           in
           let event_ref_ty = EventRefTy (event_label, is_const) in
-          let ty_info, _ =
+          let _ty_info, _ =
             set_ty_info ~force_const (event_ref_ty, is_const) ref_expr'
           in
           Ok (set_ty_info ~force_const (t_expr, is_const) expr')
@@ -727,7 +727,7 @@ and typecheck_expr ?(force_const = false) (expr' : expr')
             Option.get !(event_node.event'.data.data_expr.ty)
           in
           let event_ref_ty = EventRefTy (event_label, true) in
-          let ty_info, _ =
+          let _ty_info, _ =
             set_ty_info ~force_const (event_ref_ty, true) ref_expr'
           in
           Ok (set_ty_info ~force_const:(Some true) (t_expr, is_const) expr')

@@ -1929,7 +1929,7 @@ and to_endpoint_event (ctxt : ProjectionContext.t)
      ; instantiation_constraint_exprs
      ; communication
      ; _
-     } as event_t :
+     } as _event_t :
       Projection.event_t) : Endpoint.event =
   (* TODO [revisit] replacing with newly-generated uid (duals) - is this ok?  *)
   let element_uid = Option.get !(event'.uid) in
