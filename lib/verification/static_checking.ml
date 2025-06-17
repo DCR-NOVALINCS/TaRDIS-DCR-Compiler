@@ -3,7 +3,6 @@ open Choreo
 open Sat
 open Utils
 open Utils.Results
-open Utils.Logs
 open Frontend.Unparser
 
 exception Typecheck_IFC_error of string
@@ -28,7 +27,6 @@ type node =
 (* =========================================================================
    ==================== DEBUG section (temporary: to remove) =============== *)
 let debug_map_list (l : (cnf_formula, (loc * element_uid) list) leakError) =
-  let open Printf in
   match l with
   | UNSAT _ -> print_endline "UNSAT"
   | SAT -> print_endline "SAT "
@@ -45,7 +43,6 @@ let unparse_level_t (level : node) =
   ^ unparse_security_level' level.security_list
 
 let debug_env (env : node Env.t) =
-  let open Printf in
   let rec debug_aux env =
     match env with
     | [] -> print_endline "< end of level >\n"
@@ -58,7 +55,6 @@ let debug_env (env : node Env.t) =
   print_endline " ====== [DEBUG end] Env ===\n"
 
 let debug_lattice (map : string list TreeMap.t) =
-  let open Printf in
   print_endline " ====== [DEBUG start] Lattice ===";
   TreeMap.iter
     (fun key value ->
@@ -174,7 +170,6 @@ end = struct
     print_endline " ====== [DEBUG end] Constraints ==="
 
   let debug_expr_env (env : expr' Env.t) =
-    let open Printf in
     let rec debug_aux env =
       match env with
       | [] -> print_endline "< end of level >\n"
@@ -248,7 +243,6 @@ end = struct
     }
 
   let end_scope ctxt =
-    (* debug_expr_env ctxt.symbolic_env; *)
     { symbolic_env = Env.end_scope ctxt.symbolic_env
     ; contraints = ctxt.contraints
     ; expr_map = ctxt.expr_map
@@ -335,7 +329,6 @@ end = struct
          (annotate ~ty:(Some { t_expr = Choreo.BoolTy; is_const = true }) True)
 
   let update_cnf_formula (uuid : string) (cnf : cnf_formula) ctxt =
-    (* print_endline @@ "Cnf: " ^ unparse_cnf_formula cnf; *)
     let new_cnf =
       match TreeMap.find_opt uuid ctxt.contraints with
       | None -> cnf
@@ -348,7 +341,6 @@ end = struct
         , "[Error] Cnf sat solve: expression is unsat: "
           ^ unparse_cnf_formula new_cnf )
     | Some solver_cnf ->
-      (* print_endline @@ "Solver cnf: " ^ unparse_cnf_formula solver_cnf; *)
       let aux =
         { symbolic_env = ctxt.symbolic_env
         ; contraints = TreeMap.add uuid solver_cnf ctxt.contraints
@@ -358,15 +350,11 @@ end = struct
         ; mode = ctxt.mode
         }
       in
-      (* debug_expr_env aux.symbolic_env; *)
-      (* debug_expr_TreeMap aux.expr_map; *)
       Ok aux
 
   let return_constainsts ctxt =
-    (* debug_contraints ctxt; *)
     ctxt.expr_map
-  (* debug_contraints ctxt; *)
-  (* TreeMap.empty *)
+  
 
   let update_expr'_env (uuid : string) (expr : expr') ctxt =
     match Env.find_flat_opt uuid ctxt.symbolic_env with
@@ -408,6 +396,7 @@ module Ctxt : sig
 
   val find_env :
     int -> t -> (node Env.t * node Env.t, (loc * string) list) result
+
 end = struct
   open Utils
 
@@ -425,7 +414,6 @@ end = struct
   let reset_references ctxt =
     global_label_SC := TreeMap.empty;
     let new_expr_map = CnfExprCtxt.return_constainsts ctxt.symbolic in
-    (* CnfExprCtxt.debug_expr_TreeMap2 new_expr_map; *)
     begin
       match ctxt.symbolic.mode with
       | Hybrid -> Ok new_expr_map
@@ -964,7 +952,6 @@ and check_security_event (ctxt : Ctxt.t) event =
           { ctxt with symbolic }
   in
 
-  (* Error aqui*)
   let static_check_security_of_data_expr event ctxt =
     let rec check_security_of_type_expr type_expr lattice params =
       match type_expr.data with
@@ -1051,7 +1038,6 @@ and check_security_event (ctxt : Ctxt.t) event =
              ^ (snd event.info.data).data )
           :: e)
       | Ok security_level -> (
-        (* debug_SCs ("Expr of node: " ^ (fst event.info.data).data) security_level; *)
         match
           check_less_or_equal_security_level
             event.security_level.data
@@ -1071,8 +1057,6 @@ and check_security_event (ctxt : Ctxt.t) event =
                ^ ":" ^ (snd event.info.data).data )
             :: e)
         | symbolic, Unknown e ->
-          (* print_endline @@ "Aqui no expr";
-             print_endline @@ unparse_cnf_formula e; *)
           Ok ({ ctxt with symbolic }, e)))
   in
 
@@ -1089,7 +1073,6 @@ and check_security_event (ctxt : Ctxt.t) event =
           | Error e -> Error e
           | Ok l -> Ok (l @ acc, ctxt)
           end
-          (* Error [(loc, "Error in static check SecExpr: not implemented")] *)
         | Sec lvl ->
         let _, list_params1 = lvl.data in
         let list_params_expr =
@@ -1129,9 +1112,6 @@ and check_security_event (ctxt : Ctxt.t) event =
          , "[Error] Checking ifc levels in event " ^ id.data ^ ":" ^ label.data )
         :: e)
     | Ok (ctxt, cnf_list2) -> (
-      (* print_endline @@ "Data: " ^ (fst event.data.info.data).data ^ " :"
-         ^ unparse_cnf_formula cnf_list2; *)
-      (* print_endline @@ "Aqui"; *)
       match check_wellformedness event with
       | Error e ->
         Error
@@ -1250,19 +1230,18 @@ and check_less_or_equal_security_level (event_security : security_level)
            
                      (ctxt3, list3 :: list2)
                 | SecExpr exp1 , SecExpr exp2 -> 
-                  (* Alterar se for para usar runtime*)
                   let unp1 = unparse_expr exp1 in
                   let unp2 = unparse_expr exp2 in 
                   if (String.compare unp1 unp2) = 0 then  
                     (ctx1, SAT::list2)
                   else 
                     (ctx1, UNSAT[(exp1.loc, "[Error] Comparing both security levels "^unp1 ^" <> "^unp2)]::list2)
-                | Sec lvl , SecExpr exp2 -> 
+                | Sec lvl , SecExpr _ -> 
                   if relation then 
                   (ctx1, UNSAT[(lvl.loc, "[Error] Comparing both security levels, lvl with exp ")]::list2)
                 else 
                   (ctx1, SAT::list2)
-              | SecExpr exp1 , Sec lvl ->
+              | SecExpr exp1 , Sec _ ->
                 if relation then 
                   (ctx1, SAT::list2)
                 else 
@@ -1443,7 +1422,6 @@ and compareSecurityLevels (node1 : sec_label_param' parameterisable_role') (node
     let p = CnfExprCtxt.and_list (snd listResult) in
     (fst listResult, p)
   in
-  (* let open Frontend in *)
   match (node1.data, node2.data) with
   | (s1, list_params1), (s2, list_params2)
     when String.compare s1.data s2.data = 0 -> (
