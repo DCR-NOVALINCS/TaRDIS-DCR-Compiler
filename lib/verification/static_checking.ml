@@ -202,7 +202,6 @@ end = struct
 
   let or_list (lst : (cnf_formula, (loc * element_uid) list) leakError list) :
       (cnf_formula, (loc * element_uid) list) leakError =
-  
     let rec aux lst acc =
       match lst with
       | [] -> acc
@@ -217,14 +216,15 @@ end = struct
           | Unknown s' ->
             let p : cnf_formula = cnf_or s s' in
             aux xs (Unknown p)
-          | UNSAT _ -> Unknown s
+          | UNSAT _ -> aux xs (Unknown s)
           | SAT -> SAT)
         | SAT -> SAT)
     in
-  
+    let p = 
     aux
       lst
-      (UNSAT [ (Nowhere, "[Error] While aggregating CNF formulas with OR") ])
+      (UNSAT [ (Nowhere, "[Error] While aggregating CNF formulas with OR") ]) in
+      p
 
   let empty mode : t =
     { symbolic_env = Env.empty
@@ -846,7 +846,8 @@ and check_security_relation (ctxt : Ctxt.t) cr =
             ctxt.symbolic
             false
         with
-        | new_ctxt, SAT -> verify_relations_events [] new_ctxt
+        | new_ctxt, SAT -> 
+          verify_relations_events [] new_ctxt
         | _, UNSAT e ->
           Error
             (( cr.loc
@@ -1204,7 +1205,7 @@ and check_less_or_equal_security_level (event_security : security_level)
           List.fold_left
             (fun (ctxt2, list2) node_1 ->
               begin match l.data , node_1.data with
-              | Sec exp1, Sec exp2 -> 
+              | Sec exp1, Sec exp2 ->        
                 let ctxt3, list3 = 
                 if relation then 
                   depth_first_search
@@ -1227,8 +1228,7 @@ and check_less_or_equal_security_level (event_security : security_level)
                     env
                     ctxt2
                   in 
-           
-                     (ctxt3, list3 :: list2)
+                (ctxt3, list3 :: list2)
                 | SecExpr exp1 , SecExpr exp2 -> 
                   let unp1 = unparse_expr exp1 in
                   let unp2 = unparse_expr exp2 in 
@@ -1249,8 +1249,8 @@ and check_less_or_equal_security_level (event_security : security_level)
               end)
             (ctx1, []) !first_list
         in
-        let resolve_or:(cnf_formula, (loc * role_label) list) leakError list = [CnfExprCtxt.or_list (resList@list)] in
-        (resCtxt,resolve_or))
+        let resolve_or:(cnf_formula, (loc * role_label) list) leakError = CnfExprCtxt.or_list resList in
+        (resCtxt, resolve_or::list))
       (symbolic_env, [])
       !snd_list
   in
@@ -1526,7 +1526,6 @@ and filter_higher_levels (pc : sec_label' list) ctxt =
   in
   filter_levels [] pc
 
-(**)
 and concat_list list loc (ctxt : Ctxt.t) :
     (security_level, (loc * role_label) list) result =
   match
