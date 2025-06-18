@@ -86,7 +86,7 @@ end = struct
     else { left with encoding = cnf_and left.encoding right.encoding }
 
   let to_string ?(indent = "") ?(abbreviated = true)
-      ({ label; param_types; encoding } as t : t) =
+      ({ label; param_types; encoding } as _t : t) =
     let sprintf = Printf.sprintf in
     let unparse_ty_expr t = Frontend.Unparser.unparse_type_expr (annotate t) in
     StringMap.bindings param_types

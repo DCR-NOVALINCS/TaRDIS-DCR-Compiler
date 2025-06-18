@@ -1,9 +1,12 @@
 // ============================================================================
-// EDP Use Case: statically known events and participants, every event has
-//  Public visibility (IFC)
+// (included in the context of the TaRDIS EDP Use Case)
 // 
-// Scenario: prosumers P(1) and P(2) (acting as consumers) issue energy 
-// requests to prosumers P(3) and P(4).
+// The choreography illustrates an simplified energy-request workflow, where
+//  Prosumers P(1) and P(2) may issue energy requests to Prosumers P(3) 
+//  and P(4).
+// 
+// In this scenario, both events and participants are statically-known.
+//  (IFC-wise: every event has Public visibility)
 // ============================================================================
 
 P(id:String)

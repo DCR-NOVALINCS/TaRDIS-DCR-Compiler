@@ -1,0 +1,33 @@
+// ============================================================================
+// (included in the context of the TaRDIS EDP Use Case)
+// 
+// The choreography illustrates a simplified energy-request workflow, where 
+//  Prosumer P(1)  may issue energy requests to every other Prosumer.
+// 
+// In this scenario, participants may be statically-unknown, as specific 
+//  receivers of the consume-request are dynamically evaluated at runtime; 
+//  consequently, some events are also dynamically instantiated/spawned (-->>), 
+//  depending on the receivers encountered at runtime.
+//  
+// (IFC-wise: every event has Public visibility)
+// ============================================================================
+
+P(id:String)
+Public
+;
+
+Public flows P
+;
+
+(csm:consume) (Public) [?] [P(id='1') -> P(id=*)]
+;
+csm -->> {
+  (reply: reply) (Public) [?] [@Receiver(csm) -> P(id='1')]
+  ;
+  reply -->> {
+    !(accept: accept) (Public) [?] [P(id='1') -> @Receiver(csm)]
+    !(reject: reject) (Public) [?] [P(id='1') -> @Receiver(csm)]
+    ;
+    accept, reject -->% accept, reject
+  }
+}

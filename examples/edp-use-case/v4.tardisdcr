@@ -1,0 +1,33 @@
+// ============================================================================
+// (included in the context of the TaRDIS EDP Use Case)
+// 
+// The choreography illustrates a simplified energy-request workflow, where 
+//  each individual Prosumer may issue energy requests to every other Prosumer.
+//  Roles are refined to constrain Prosumers to communication within their
+//  own Energy Community (represented by cid).
+// 
+// In this scenario, participants are specified generically and evaluated at 
+//  runtime; consequently, some events are also dynamically instantiated
+//  spawned (-->>), depending on the receivers encountered at runtime.
+//  
+// (IFC-wise: every event has Public visibility)
+// ============================================================================
+
+P(id:String; cid:Integer)
+Public
+;
+Public flows P
+;
+
+(csm:consume) (Public) [?:{kw:Integer}] [P(#id; #cid as X) -> P(id=*; cid=X)]
+;
+csm -->> {
+  (reply: reply) (Public) [?] [@Receiver(csm) -> @Initiator(csm)]
+  ;
+  reply -->> {
+    !(accept: accept) (Public) [?] [@Initiator(csm) -> @Receiver(csm)]
+    !(reject: reject) (Public) [?] [@Initiator(csm) -> @Receiver(csm)]
+    ;
+    accept, reject -->% accept, reject
+  }
+}

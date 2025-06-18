@@ -518,9 +518,6 @@ end = struct
       |> List.map fst |> StringSet.of_list)
 
   let union (left : t) (right : t) : t =
-    (* print_endline "@projectability.RoleCtxt.union";
-    print_endline @@ Printf.sprintf "left: %s" (CnfRole.to_string left.group);
-    print_endline @@ Printf.sprintf "right: %s" (CnfRole.to_string right.group); *)
     if role_label left <> role_label right then
       raise @@ Internal_error "Expecting arguments of same role"
     else

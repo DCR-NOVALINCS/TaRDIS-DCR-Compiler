@@ -3,15 +3,14 @@
   (flags
    (:standard -warn-error -A)))
  (release
-  (ocamlopt_flags (:standard -O3)))
-  )
+  (ocamlopt_flags
+   (:standard -O3))))
 
 (executable
  (public_name main)
  (name main)
  (modules main)
  (libraries str utils verification endpoint_projection translation))
-
 
 (executable
  (name main_js)
