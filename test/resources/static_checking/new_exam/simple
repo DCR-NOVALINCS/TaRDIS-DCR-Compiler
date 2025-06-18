@@ -1,0 +1,10 @@
+CO(cid:Integer)
+P(id:String; cid:Integer)
+Public
+;
+Public flows P
+Public flows CO
+;
+
+// supply fault scenario
+(fault:fault) (Public) [?] [P(#id; #cid as X) -> CO(cid=X)]

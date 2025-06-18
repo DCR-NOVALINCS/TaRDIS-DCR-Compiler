@@ -1,0 +1,18 @@
+P(id:String)
+Public
+;
+Public flows P
+;
+
+(csm:consume) (P(id:Bot)) [?:String] [P(id='1') -> P(id=*)]
+;
+csm -->> {
+  (reply: reply) (P(id:'1'),P(id:@trigger.value)) [?] [@Receiver(csm) -> @Initiator(csm)]
+  ;
+  reply -->> {
+    (yea: accept) (P(id:'1'), P(id:'2')) [?] [@Receiver(reply) -> @Initiator(reply)]
+    (nay: reject) (P(id:'1'), P(id:'2')) [?] [@Receiver(reply) -> @Initiator(reply)]
+    ;
+    yea, nay -->% yea, nay
+  }
+}

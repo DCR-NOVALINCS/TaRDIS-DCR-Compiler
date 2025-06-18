@@ -1,43 +1,39 @@
-# ==========================================
-# information flow section - ignored for now
-# ------------------------------------------
-# security labels / parametrised roles
-Top
+//# ==========================================
+//# information flow section - ignored for now
+//# ------------------------------------------
+//# security labels / parametrised roles
 Admin
 ClerkLevel
-DoctorLevel (String) 
-PatientLevel (String)
+DoctorLevel (id:String) 
+PatientLevel (id:String)
 Public
-Bot
 ;
-# security lattice / information flow 
-Bot flows Public
+//# security lattice / information flow 
 Public flows ClerkLevel
 Public flows PatientLevel
 Public flows DoctorLevel
 ClerkLevel flows Admin
 PatientLevel flows Admin
 DoctorLevel flows Admin
-Admin flows Top
 ;
 
 
-(createDoctor: createDoctor) (Admin;Public) [?: {name:String}] [ Admin ]
-(createPatient: createPatient) (Admin;ClerkLevel,DoctorLevel(Lower),PatientLevel(Lower)) [?: {name:String}]  [Admin ]
+(createDoctor: createDoctor) (Public) [?: {name:String}] [ Admin ]
+(createPatient: createPatient) (ClerkLevel,DoctorLevel(id:Bot),PatientLevel(id:Bot)) [?: {name:String}]  [Admin ]
 ;
 createDoctor  -->> {
-    (doctor:Doctor) (Admin;Public) [{name:@trigger.value.name}] [Admin]
-    (addAppointment:addAppointment) (ClerkLevel;ClerkLevel,DoctorLevel(@trigger.value.name),PatientLevel(Lower)) [?: {patient:Patient,doctor:Doctor}]  [Admin]
+    (doctor:Doctor) (Public) [{name=@trigger.value.name}] [Admin]
+    (addAppointment:addAppointment) (ClerkLevel,DoctorLevel(id:@trigger.value.name),PatientLevel(id:Bot)) [?: {patient:Patient;doctor:Doctor}]  [Admin]
     ;
     addAppointment -->> {
-            (appointment:appointment) (ClerkLevel,DoctorLevel(@trigger.value.doctor.name);ClerkLevel,DoctorLevel(@trigger.value.doctor.name),PatientLevel(@trigger.value.patient.name)) [{patient:@trigger.value.patient}] [Admin]
+            (appointment:appointment) (ClerkLevel,DoctorLevel(id:@trigger.value.doctor.value.name),PatientLevel(id:@trigger.value.patient.value.name)) [{patient=@trigger.value.patient}] [Admin]
              
     }
     
 }
 createPatient  -->> {
-        (patient:Patient) (Admin;ClerkLevel, DoctorLevel(Lower), PatientLevel(@trigger.value.name)) [{name:@trigger.value.name}] [Admin]
-        
+        (patient:Patient) (ClerkLevel, DoctorLevel(id:Bot), PatientLevel(id:@trigger.value.name)) [{name=@trigger.value.name}] [Admin]
+        // (patient:Patient) (ClerkLevel, DoctorLevel(id:Bot), PatientLevel(id:@trigger.value.name)) [{name=@trigger.value.name}] [Admin]
 
 
 }

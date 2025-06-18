@@ -1,15 +1,13 @@
-# ============================================== #
-# target: static_checking.ml                     #
-# ---------------------------------------------- #
-# description:   Check simple with spawn#
-# ---------------------------------------------- #
-# expected: ok                                   #
-# ============================================== #
-
-
+// # ============================================== #
+// # target: static_checking.ml                     #
+// # ---------------------------------------------- #
+// # description:   Check simple with spawn#
+// # ---------------------------------------------- #
+// # expected: ok                                   #
+// # ============================================== #
 Secret
-Orchestrator(String)
-Prosumer(String)
+Orchestrator(id:String)
+Prosumer(id:String)
 Public
 ;
 Public flows Prosumer
@@ -18,48 +16,15 @@ Prosumer flows Secret
 Orchestrator flows Secret
 ;
 
-#X maps events -> security labels 
-#Y maps values -> symbols (abstraction for a value)
+(createCommunity:cc) (Public) [?:{ cid : String }] [Public]
 
-(createCommunity:cc) (Secret;Public) [?:{ cid : String }] [A]
-
-#@trigger == UNDEFINED (top level) cannot be used for value resolution
-#X0 = {cc -> Public}
-#Y0 = {cc.cid -> A} 
 ;
 createCommunity -->> {
-  (communityInfo:CommunityInfo) (Orchestrator(@trigger0.value.cid); Public) [{cid= @trigger0.value.cid}]  [A]
-  (createProsumer:cp) (Orchestrator(@trigger0.value.cid); Orchestrator(@trigger0.value.cid), Prosumer(Lower)) [? : {pid: String}]  [A]
-
-
-#@trigger == cc                          
-#X1 = X0::{ci -> Public; cp -> {O(A); P(\bot)}}
-#Y1 = Y0::{ci.cid = A, cp.pid = B}
-
+  (communityInfo:CommunityInfo) (Public) [{cid= @trigger.value.cid}]  [Public]
+  (createProsumer:cp) (Orchestrator(id:@trigger.value.cid), Prosumer(id:Bot)) [? : {pid: String}]  [Public]
   ; 
   createProsumer -->> { 
-      #env [ [createCommunity:Public;] 
-        #[@trigger0:createCommunity; communityInfo:(Public,{cid: @trigger0.value.cid }); createProsumer:( Orchestrator(@trigger0.value.cid), Prosumer(Lower))]
-        #[@trigger1:createProsumer; prosumerInfo:(Orchestrator(communityInfo.value.cid),Prosumer(@trigger1.value.pid),{pid:@trigger1.value.pid})]]
-        #trigger1.SL flows prosumerInfo.SL
-        #Orchestrator(@trigger0.value.cid), Prosumer(Lower) flows Orchestrator(communityInfo.value.cid),Prosumer(@trigger1.value.pid)
-        #Orchestrator(@trigger0.value.cid)flows Orchestrator(communityInfo.value.cid)
-        #Prosumer(Lower) flows Prosumer(@trigger1.value.pid) -->  Ok
-        #@trigger0.value.cid = communityInfo.value.cid
-        
-
-      #@tirgger = cp
-      #X2 = X1::{pi -> {O(A), P(B)}}
-      #Y2 = Y1::{pi.pid = B}
-
-# {O(A), P(B)} >= {O(A); P(\bot)}
-
-      (prosumerInfo:ProsumerInfo) (Prosumer(@trigger1.value.pid); Orchestrator(communityInfo.value.cid),Prosumer(@trigger1.value.pid)) [{pid=@trigger1.value.pid}] [A]
+      (prosumerInfo:ProsumerInfo) (Orchestrator(id:communityInfo.value.cid),Prosumer(id:@trigger.value.pid)) [{pid=@trigger.value.pid}] [Public]
       
   }
 }
-
-    
-#  (createProsumer:cp) (Orchestrator(@trigger.value.cid), Prosumer(Lower)) [? : {pid: String}]  [A]
-# (prosumerInfo:ProsumerInfo) (Orchestrator(communityInfo.value.cid)) [{pid:@trigger.value.pid}] [A]
-

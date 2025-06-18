@@ -50,11 +50,64 @@ let test_suite =
               let state = build_state "resources/static_checking/0.2.tardisdcr" test_ctxt in
               test_case state ( Ok TreeMap.empty ) "Expected Ok in Test 0.2") )
       ;
-      ( "Testing simple IFC with spawns" >::
+      ( "Testing params IFC with spawns" >::
       (fun test_ctxt ->
-        let state = build_state "resources/static_checking/0.2.tardisdcr" test_ctxt in
-        test_case state ( Ok TreeMap.empty ) "Expected Ok in Test 0.2") )
-;
+        let state = build_state "resources/static_checking/0.3.tardisdcr" test_ctxt in
+        test_case state ( Ok TreeMap.empty ) "Expected Ok in Test 0.3") )
+; ( "Testing 2 params IFC with spawns" >::
+(fun test_ctxt ->
+  let state = build_state "resources/static_checking/0.4" test_ctxt in
+  test_case state ( Ok TreeMap.empty ) "Expected Ok in Test 0.4") )
+;( "Testing 2 params IFC with spawns for dynamic" >::
+(fun test_ctxt ->
+  let state = build_state "resources/static_checking/0.4.1.tardisdcr" test_ctxt in
+  test_case state ( Ok TreeMap.empty ) "Expected Ok in Test 0.4.1") )
+;( "Testing 2 params IFC with spawns for static" >::
+(fun test_ctxt ->
+  let state = build_state "resources/static_checking/1.tardisdcr" test_ctxt in
+  test_case state ( Ok TreeMap.empty ) "Expected Ok in Test 1") )
+;( "Testing 2 params IFC with spawns for static" >::
+(fun test_ctxt ->
+  let state = build_state "resources/static_checking/2.tardisdcr" test_ctxt in
+  test_case state ( Error []) "Expected error in test 2 due to exp of an event is unsafe") )
+  ;
+  ( "Testing 2 params IFC with spawns for static" >::
+(fun test_ctxt ->
+  let state = build_state "resources/static_checking/3.tardisdcr" test_ctxt in
+  test_case state ( Error []) "Expected error in test 3 trigger from spawn2 cause conflit with multiple instances ") )
+  ;
+  ( "Testing 2 params IFC with spawns for static" >::
+  (fun test_ctxt ->
+    let state = build_state "resources/static_checking/5.tardisdcr" test_ctxt in
+    test_case state ( Ok TreeMap.empty) "Expected Ok in test 5  ") )
+    ;
+    ( "Testing simple IFC without spawns for static" >::
+    (fun test_ctxt ->
+  let state = build_state "resources/static_checking/6.tardisdcr" test_ctxt in
+  test_case state ( Ok TreeMap.empty) "Expected Ok in test 6 ") )
+  ;
+  ( "Testing edp use case" >::
+  (fun test_ctxt ->
+  let state = build_state "resources/static_checking/new_exam/edp_ifc" test_ctxt in
+  test_case state ( Ok TreeMap.empty) "Expected Ok in test EDP use case with initiators and receivers") )
+  ;
+  ( "Testing edp use case" >::
+  (fun test_ctxt ->
+  let state = build_state "resources/static_checking/new_exam/new_edp" test_ctxt in
+  test_case state ( Ok TreeMap.empty) "Expected Ok in test EDP use case with params") )
+  ;  
+  ( "Testing edp use case with 2 sec labels" >::
+  (fun test_ctxt ->
+    let state = build_state "resources/static_checking/new_exam/tardis_1init" test_ctxt in
+    test_case state ( Ok TreeMap.empty) "Expected Ok in test EDP use case with params") )
+    ;
+  ( "Testing edp use case with 2 sec labels" >::
+  (fun test_ctxt ->
+    let state = build_state "resources/static_checking/new_exam/tardis_1init" test_ctxt in
+    test_case state ( Ok TreeMap.empty) "Expected Ok in test EDP use case with params") )
+    ;
+       
+     
 
    
   ]

@@ -1,9 +1,9 @@
 //  ============================================== #
 //  target: static_checking.ml                     #
 //  ---------------------------------------------- #
-//  description:  Testing params #
+//  description:  Testing params in spawn #
 //  ---------------------------------------------- #
-//  expected: Equal to 0.1   true                    #
+//  expected:    Ok              #
 //  ============================================== #
 A
 L0
@@ -21,29 +21,28 @@ L1 flows L2
 L2 flows L4
 L3 flows L4
 ;
-(a:X) (L2(lid: 'ola')) [2]  [A]
+(a:X) (L1(lid: 'ola')) [2]  [A]
 (b:B) (L1(lid:'ola')) ['ola']   [A]
 %(c:C)(L1(lid:b.value)) [true]   [A]
 (y:Y) (L1(lid:'ola')) [{v=b.value }]   [A]
 (z:Z) (L1(lid:Bot)) [?:{v:String}] [A]
 (w:W) (L1(lid:'ola')) [{v='ola'}] [A]
 ;
-//a -->+c
+a -->+c
 b -->+ c
 z -->> {
     (yinfo:info)(L1(lid:'ola'))[{id= @trigger.value.v}][A]
     (create:create)(L1(lid:@trigger.value.v))[{cid=@trigger.value.v}][A]
     ;
     yinfo -->+ create 
-
-  //  create -->> {
+   create -->> {
         //#erro valueExprId( o event que originou o spawn) é d ???
-    //    (new:new)(L1(lid:create.value.cid))[{nid=@trigger.value.cid}][A] 
-     //  ;
-      // new -->> {
-        //  (d:d)(L1(lid:yinfo.value.id))[{did= @trigger.value.nid}][A]
-            
-           // a -->+ b
-      // }
-    //}
+       (new:new)(L1(lid:create.value.cid))[{nid=@trigger.value.cid}][A] 
+      ;
+      new -->> {
+         (d:d)(L1(lid:yinfo.value.id))[{did= @trigger.value.nid}][A]
+            ;
+           a -->+ b
+      }
+    }
 }
