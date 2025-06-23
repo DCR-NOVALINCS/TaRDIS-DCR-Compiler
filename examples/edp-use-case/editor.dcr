@@ -1,0 +1,33 @@
+CO(cid:Integer)
+P(id:String; cid:Integer)
+Public
+;
+Public flows P
+Public flows CO
+;
+
+
+(r4c:request_forecast) (Public) [?] [CO(#cid as X) -> P(id=*; cid=X)]
+%(accounting:accounting) (Public) [?:Integer] [CO(#cid as X)]
+(csm:consume) (Public) [?:{kw:Integer}] [P(#id; #cid as X) -> P(id=*; cid=X)]
+;
+accounting -->% accounting
+r4c -->% csm
+r4c -->> {
+  !(reply: r4c_reply) (Public) [?:Integer] [@Receiver(r4c) -> @Initiator(r4c)]
+  ;
+  reply -->% reply
+  reply *--> accounting
+  reply -->+ accounting, csm
+}
+csm -->> {
+  (reply: csm_reply) (Public) [?:{kw:Integer; cost:Integer}] [@Receiver(csm) -> @Initiator(csm)]
+  ;
+  reply -->% reply
+  reply -->> {
+    (accept: accept) (Public) [?:Integer] [@Initiator(csm) -> @Receiver(csm)]
+    (reject: reject) (Public) [?] [@Initiator(csm) -> @Receiver(csm)]
+    ;
+    accept, reject -->% accept, reject
+  }
+}

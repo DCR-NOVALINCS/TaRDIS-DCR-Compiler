@@ -1,0 +1,20 @@
+P(id:String)
+Public
+;
+
+Public flows P
+;
+
+//                     from each P -> to every other P
+(csm:consume) (Public) [?] [P(#id) -> P(id=*)]
+;
+csm -->> {
+  (reply: reply) (Public) [?] [@Receiver(csm) -> @Initiator(csm)]
+  ;
+  reply -->> {
+    !(accept: accept) (Public) [?] [@Initiator(csm) -> @Receiver(csm)]
+    !(reject: reject) (Public) [?] [@Initiator(csm) -> @Receiver(csm)]
+    ;
+    accept, reject -->% accept, reject
+  }
+}
