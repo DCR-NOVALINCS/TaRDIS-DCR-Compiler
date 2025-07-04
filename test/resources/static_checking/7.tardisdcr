@@ -1,0 +1,33 @@
+// ============================================================================
+// EDP Use Case: statically known events and participants
+// 
+// Scenario: prosumers P(1) and P(2) (acting as consumers) issue energy 
+// requests to prosumers P(3) and P(4).
+// ============================================================================
+
+
+Public
+Private
+E1(id:String)
+E2(id:String)
+;
+Public flows E1
+Public flows E2
+E1 flows Private
+E2 flows Private
+;
+
+(a:A)(Public) [?:String][Public]
+//(c:C) (E1(id:Top),E2(id:Top)) [?:B] [Public]
+(d:D)(Public) [?:String][Public]
+;
+a-->>{
+    (b:B) (E1(id:@trigger.value))[?][Public]
+
+}
+// a-->> {
+//     (b:B) (E2(id:@trigger.value))[?][Public]
+// }
+d -->> {
+    (c:C) (E1(id:@trigger.value)) [?:B] [Public]
+}

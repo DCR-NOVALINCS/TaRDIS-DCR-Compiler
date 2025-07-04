@@ -34,6 +34,7 @@ and encode_type_expr (type_expr : Choreo.type_expr) : Basic.t =
   | Choreo.IntTy -> `Assoc [ ("valueType", `String "int") ]
   | Choreo.StringTy -> `Assoc [ ("valueType", `String "string") ]
   | Choreo.EventRefTy (label, _) -> `Assoc [ ("label", `String label) ]
+  | Choreo.EventTy label -> `Assoc [ ("label", `String label) ]
   | Choreo.RecordTy ty_fields ->
     List.fold_left
       (fun (assoc_list : Basic.t list)

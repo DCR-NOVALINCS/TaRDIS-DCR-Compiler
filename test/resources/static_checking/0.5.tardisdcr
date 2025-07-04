@@ -1,0 +1,20 @@
+Public
+P1
+P2
+P3
+Secret
+;
+Public flows P1
+Public flows P2
+Public flows P3
+P1 flows Secret
+P2 flows Secret
+P3 flows Secret
+;
+
+(e0:E0)(P1)[2] [Public]
+(e1:E1)(P2)[2][Public]
+// (e2:E2)(P1,P2)[e0.value+e1.value][Public] nao devia
+(e2:E2)(P1,P2)[2][Public]
+;
+e2 -->+ e0
