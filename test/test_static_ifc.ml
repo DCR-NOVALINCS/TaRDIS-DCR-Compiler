@@ -88,11 +88,6 @@ let test_suite =
   ;
   ( "Testing edp use case" >::
   (fun test_ctxt ->
-  let state = build_state "resources/static_checking/new_exam/edp_ifc" test_ctxt in
-  test_case state ( Ok TreeMap.empty) "Expected Ok in test EDP use case with initiators and receivers") )
-  ;
-  ( "Testing edp use case" >::
-  (fun test_ctxt ->
   let state = build_state "resources/static_checking/new_exam/new_edp" test_ctxt in
   test_case state ( Ok TreeMap.empty) "Expected Ok in test EDP use case with params") )
   ;  

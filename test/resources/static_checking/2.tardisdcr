@@ -32,7 +32,7 @@ createDoctor  -->> {
     
 }
 createPatient  -->> {
-        (patient:Patient) (ClerkLevel, DoctorLevel(id:Bot), PatientLevel(id:Bot)) [{name=@trigger.value.name}] [Admin]
+        (patient:Patient) (ClerkLevel, DoctorLevel(id:Bot), PatientLevel(id:@trigger.value.name)) [{name=@trigger.value.name}] [Admin]
         // (patient:Patient) (ClerkLevel, DoctorLevel(id:Bot), PatientLevel(id:@trigger.value.name)) [{name=@trigger.value.name}] [Admin]
 
 

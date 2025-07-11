@@ -76,7 +76,7 @@ let _TOP : string = "Top"
 let _BOT_LEVEL : security_level =
   [ annotate (Sec (annotate (annotate _BOT, []))) ]
 
-let global_label_SC : security_level TreeMap.t ref = ref TreeMap.empty
+(* let global_label_SC : (security_level) TreeMap.t ref = ref TreeMap.empty *)
 
 module CnfExprCtxt : sig
   type mode =
@@ -370,7 +370,7 @@ module Ctxt : sig
     ; lattice : string list TreeMap.t ref
     ; sec_params : string list TreeMap.t ref
     ; symbolic : CnfExprCtxt.t
-    ; global_label_SC : security_level TreeMap.t ref
+    ; global_label_SC : (security_level * node Env.t) TreeMap.t ref
     ; trigger_stack : string list
     }
 
@@ -404,14 +404,14 @@ end = struct
     ; lattice : string list TreeMap.t ref
     ; sec_params : string list TreeMap.t ref
     ; symbolic : CnfExprCtxt.t
-    ; global_label_SC : security_level TreeMap.t ref
+    ; global_label_SC : (security_level * node Env.t) TreeMap.t ref
     ; trigger_stack : string list
     }
 
   let get_trigger ctxt = List.hd ctxt.trigger_stack
 
   let reset_references ctxt =
-    global_label_SC := TreeMap.empty;
+    ctxt.global_label_SC := TreeMap.empty;
     let new_expr_map = CnfExprCtxt.return_constainsts ctxt.symbolic in
     begin
       match ctxt.symbolic.mode with
@@ -694,8 +694,9 @@ and retrive_security_of_events (ctxt : Ctxt.t) (events, crs) =
     in
     let event_data = event.data in
     let id, label = event_data.info.data in
-    global_label_SC :=
-      TreeMap.add label.data event_data.security_level.data !global_label_SC;
+    let label_data = (event_data.security_level.data, ctxt.env) in
+    ctxt.global_label_SC :=
+      TreeMap.add label.data label_data !(ctxt.global_label_SC);
 
     if all_levels_const event_data then
       Ok (Ctxt.create_and_bind_node id.data event ctxt)
@@ -709,40 +710,47 @@ and retrive_security_of_events (ctxt : Ctxt.t) (events, crs) =
   let process_spawn_relation (ctxt : Ctxt.t) cr =
     match cr.data with
     | ControlRelation _ -> Ok ctxt
-    | SpawnRelation (_, trigger, _, prog) ->
-      retrive_security_of_events
-        (Ctxt.begin_scope trigger ctxt)
-        (prog.events, prog.relations)
-      >>= fun ctxt -> Ok (Ctxt.end_scope ctxt)
+    | SpawnRelation (event, trigger, _, prog) -> (
+      match Env.find_flat_opt event.data ctxt.env with
+      | None ->
+        Error [ (cr.loc, "[Error] finding the trigger event: " ^ event.data) ]
+      | Some node ->
+        retrive_security_of_events
+          (Ctxt.begin_scope trigger ctxt |> Ctxt.bind trigger node)
+          (prog.events, prog.relations)
+        >>= fun ctxt -> Ok (Ctxt.end_scope ctxt))
   in
   fold_left_error process_events ctxt events >>= fun ctxt2 ->
   fold_left_error process_spawn_relation ctxt2 crs
 
-and check_security_of_expr (ctxt : Ctxt.t) expr security_level =
+and check_security_of_expr (ctxt : Ctxt.t) expr security_level uuid =
   match expr.data with
   | True -> Ok ctxt
   | False -> Ok ctxt
   | IntLit _ -> Ok ctxt
   | StringLit _ -> Ok ctxt
-  | Parenthesized expr -> check_security_of_expr ctxt expr security_level
+  | Parenthesized expr -> check_security_of_expr ctxt expr security_level uuid
   | BinaryOp (e1, e2, _) -> (
-    match check_security_of_expr ctxt e1 security_level with
+    match check_security_of_expr ctxt e1 security_level uuid with
     | Error e ->
       Error
         ((e1.loc, "[Error] Getting security level of expr: " ^ unparse_expr e1)
         :: e)
     | Ok ctxt1 -> (
-      match check_security_of_expr ctxt1 e2 security_level with
+      match check_security_of_expr ctxt1 e2 security_level uuid with
       | Error e ->
         Error
           ((e2.loc, "[Error] Getting security level of expr: " ^ unparse_expr e2)
           :: e)
       | Ok ctxt2 -> Ok ctxt2))
-  | UnaryOp (e, _) -> check_security_of_expr ctxt e security_level
+  | UnaryOp (e, _) -> check_security_of_expr ctxt e security_level uuid
   | EventRef id -> (
     match Env.find_flat_opt id.data ctxt.env with
     | None ->
-      Error [ (id.loc, "[Error] Getting security level of event: " ^ id.data) ]
+      Error
+        [ ( expr.loc
+          , "[Error] Getting security level of event: " ^ unparse_expr expr )
+        ]
     | Some node -> begin
       match
         check_less_or_equal_security_level
@@ -753,21 +761,21 @@ and check_security_of_expr (ctxt : Ctxt.t) expr security_level =
           ctxt.sec_params
           ctxt.lattice
           ctxt.symbolic
-        (* false *)
       with
       | _, UNSAT e ->
         Error
-          (( id.loc
-           , "[Error] Information leak in event: " ^ id.data ^ " ("
+          (( expr.loc
+           , "[Error] Information leak in event: " ^ unparse_expr expr ^ " ("
              ^ unparse_security_level' node.security_list
              ^ ") -> "
              ^ unparse_security_level' security_level )
           :: e)
       | symbolic, Unknown e ->
         let ctxt = { ctxt with symbolic } in
+
         Ctxt.add_symbol
-          !(id.uid)
-          id.loc
+          uuid
+          expr.loc
           e
           "[Error] In event reference: Invalid event uuid while adding dynamic \
            flag in Unknown"
@@ -778,56 +786,47 @@ and check_security_of_expr (ctxt : Ctxt.t) expr security_level =
     match Env.find_flat_opt t ctxt.env with
     | None ->
       Error [ (expr.loc, "[Error] Getting security level of trigger: " ^ t) ]
-    | Some sec_node ->
-      (* Ok sec_node.security_list *)
-      begin
-        match
-          check_less_or_equal_security_level
-            sec_node.security_list
-            sec_node.env
-            security_level
-            ctxt.env
-            ctxt.sec_params
-            ctxt.lattice
-            ctxt.symbolic
-          (* false *)
-        with
-        | _, UNSAT e ->
-          Error
-            (( expr.loc
-             , "[Error] Information leak in event: " ^ unparse_expr expr ^ " ("
-               ^ unparse_security_level' sec_node.security_list
-               ^ ") -> "
-               ^ unparse_security_level' security_level )
-            :: e)
-        | symbolic, Unknown e ->
-          let ctxt = { ctxt with symbolic } in
-          Ctxt.add_symbol
-            !(expr.uid)
-            expr.loc
-            e
-            "[Error] In event reference: Invalid event uuid while adding \
-             dynamic flag in Unknown"
-            ctxt
-        | symbolic, SAT -> Ok { ctxt with symbolic }
-      end)
-  | PropDeref (expr, _) -> check_security_of_expr ctxt expr security_level
+    | Some sec_node -> begin
+      match
+        check_less_or_equal_security_level
+          sec_node.security_list
+          sec_node.env
+          security_level
+          ctxt.env
+          ctxt.sec_params
+          ctxt.lattice
+          ctxt.symbolic
+      with
+      | _, UNSAT e ->
+        Error
+          (( expr.loc
+           , "[Error] Information leak in event: " ^ unparse_expr expr ^ " ("
+             ^ unparse_security_level' sec_node.security_list
+             ^ ") -> "
+             ^ unparse_security_level' security_level )
+          :: e)
+      | symbolic, Unknown e ->
+        let ctxt = { ctxt with symbolic } in
+        Ctxt.add_symbol
+          uuid
+          expr.loc
+          e
+          "[Error] In event reference: Invalid event uuid while adding dynamic \
+           flag in Unknown"
+          ctxt
+      | symbolic, SAT -> Ok { ctxt with symbolic }
+    end)
+  | PropDeref (expr, _) -> check_security_of_expr ctxt expr security_level uuid
   | List list ->
-    (* let new_list = *)
     fold_left_error
-      (fun acc e -> check_security_of_expr acc e security_level)
+      (fun acc e -> check_security_of_expr acc e security_level uuid)
       ctxt
       list
   | Record list ->
     fold_left_error
-      (fun acc e -> check_security_of_expr acc (snd e.data) security_level)
+      (fun acc e -> check_security_of_expr acc (snd e.data) security_level uuid)
       ctxt
       list
-(* let n_list =
-      List.map
-        (fun r -> check_security_of_expr ctxt (snd r.data) security_level)
-        list
-    in *)
 
 (** Check security levels of graph 1. Verify events 2. Verify relations *)
 and check_security_graph (ctxt : Ctxt.t) (events, crs) =
@@ -877,7 +876,7 @@ and check_security_relation (ctxt : Ctxt.t) cr =
             ctxt.symbolic
           (* false *)
         with *)
-      match check_security_of_expr ctxt exp node1.security_list with
+      match check_security_of_expr ctxt exp node1.security_list !(cr.uid) with
       | Error e ->
         Error
           (( cr.loc
@@ -921,7 +920,7 @@ and check_security_relation (ctxt : Ctxt.t) cr =
     | None ->
       Error [ (cr.loc, "[Error] finding the trigger event: " ^ event.data) ]
     | Some node -> (
-      match check_security_of_expr ctxt exp node.security_list with
+      match check_security_of_expr ctxt exp node.security_list !(event.uid) with
       | Error err ->
         Error
           ((exp.loc, "[Error] Checking spawn guard expression " ^ event.data)
@@ -1011,146 +1010,154 @@ and check_security_event (ctxt : Ctxt.t) event =
           { ctxt with symbolic }
   in
 
-  let static_check_security_of_data_expr event ctxt =
-    let rec check_security_of_type_expr type_expr lattice params event_sec =
+  let static_check_security_of_data_expr (event : event') ctxt =
+    let rec check_security_of_type_expr type_expr uuid loc event_sec
+        (ctxt : Ctxt.t) =
       match type_expr.data with
-      | UnitTy -> Ok _BOT_LEVEL
-      | StringTy -> Ok _BOT_LEVEL
-      | IntTy -> Ok _BOT_LEVEL
-      | BoolTy -> Ok _BOT_LEVEL
+      | UnitTy -> Ok (ctxt, [])
+      | StringTy -> Ok (ctxt, [])
+      | IntTy -> Ok (ctxt, [])
+      | BoolTy -> Ok (ctxt, [])
       | EventRefTy (s, _) -> (
-        match TreeMap.find_opt s !global_label_SC with
+        match TreeMap.find_opt s !(ctxt.global_label_SC) with
         | None ->
           Error [ (type_expr.loc, "[Error] Static check Event type expr " ^ s) ]
-        | Some node ->
-          Ok (get_levels_from_SC_List filter_higher_levels node [] ctxt))
+        | Some (sec, env) -> begin
+          match
+            check_less_or_equal_security_level
+              sec
+              env
+              event_sec
+              ctxt.env
+              ctxt.sec_params
+              ctxt.lattice
+              ctxt.symbolic
+            (* false *)
+          with
+          | _, UNSAT e ->
+            Error
+              (( event.loc
+               , "[Error] Information leak in event: " ^ s ^ " ("
+                 ^ unparse_security_level' sec
+                 ^ ") -> "
+                 ^ unparse_security_level' event_sec )
+              :: e)
+          | symbolic, Unknown e ->
+            let ctxt = { ctxt with symbolic } in
+            Ok (ctxt, e)
+          | symbolic, SAT -> Ok ({ ctxt with symbolic }, [])
+        end)
       | EventTy s -> (
-        match TreeMap.find_opt s !global_label_SC with
-        | Some node ->
-          Ok (get_levels_from_SC_List filter_higher_levels node [] ctxt)
+        match TreeMap.find_opt s !(ctxt.global_label_SC) with
+        | Some (sec, env) -> begin
+          match
+            check_less_or_equal_security_level
+              sec
+              env
+              event_sec
+              ctxt.env
+              ctxt.sec_params
+              ctxt.lattice
+              ctxt.symbolic
+          with
+          | _, UNSAT e ->
+            Error
+              (( event.loc
+               , "[Error] Information leak in event: " ^ s ^ " ("
+                 ^ unparse_security_level' sec
+                 ^ ") -> "
+                 ^ unparse_security_level' event_sec )
+              :: e)
+          | symbolic, Unknown e ->
+            let ctxt = { ctxt with symbolic } in
+            Ok (ctxt, e)
+          | symbolic, SAT -> Ok ({ ctxt with symbolic }, [])
+        end
         | None ->
           Error [ (type_expr.loc, "[Error] Static check Event type expr " ^ s) ]
         )
-      | RecordTy r -> (
-        let list_pc =
-          List.fold_left
-            (fun acc l ->
-              match acc with
-              | Error e -> Error ((type_expr.loc, "[Error] RecordTy") :: e)
-              | Ok acc' -> (
-                match l with
-                | Ok l' -> Ok (acc' @ l')
-                | Error e -> Error e))
-            (Ok [])
-            (List.map
-               (fun record ->
-                 check_security_of_type_expr (snd record.data) lattice params)
-               r)
-        in
-        match list_pc with
-        | Error e -> Error e
-        | Ok get_list ->
-          Ok (get_levels_from_SC_List filter_higher_levels get_list [] ctxt))
+      | RecordTy record ->
+        fold_left_error
+          (fun (ctxt, list) field ->
+            begin
+              match
+                check_security_of_type_expr
+                  (snd field.data)
+                  uuid
+                  loc
+                  event_sec
+                  ctxt
+              with
+              | Error e -> Error e
+              | Ok (ctxt, e) -> Ok (ctxt, e @ list)
+            end)
+          (ctxt, [])
+          record
       | ListTy _ ->
         Error [ (type_expr.loc, "[Error] Static check ListTy type expr ") ]
-      | ListTyEmpty -> Ok _BOT_LEVEL
+      | ListTyEmpty -> Ok (ctxt, [])
     in
-    match event.data_expr.data with
-    | Input ty_expr -> (
+    match event.data.data_expr.data with
+    | Input ty_expr -> begin
       match
-        check_security_of_type_expr ty_expr ctxt.lattice !(ctxt.sec_params)
+        check_security_of_type_expr
+          ty_expr
+          event.uid
+          event.loc
+          event.data.security_level.data
+          ctxt
       with
       | Error e ->
         Error
-          (( ty_expr.loc
-           , "[Error] Expression of event " ^ (fst event.info.data).data ^ ":"
-             ^ (snd event.info.data).data )
+          (( event.data.info.loc
+           , "[Error] Static check input type expr in event "
+             ^ (fst event.data.info.data).data ^ ":"
+             ^ (snd event.data.info.data).data )
           :: e)
-      | Ok security_lvl -> (
-        match
-          check_less_or_equal_security_level
-            event.security_level.data
-            ctxt.env
-            security_lvl
-            ctxt.env
-            ctxt.sec_params
-            ctxt.lattice
-            ctxt.symbolic
-          (* false *)
-        with
-        | symbolic, SAT -> Ok ({ ctxt with symbolic }, [])
-        | _, UNSAT e ->
-          Error
-            (( ty_expr.loc
-             , "[Error] Static ifc in expression of event "
-               ^ (fst event.info.data).data ^ ":" ^ (snd event.info.data).data
-             )
-            :: e)
-        | symbolic, Unknown e -> Ok ({ ctxt with symbolic }, e)))
+      | Ok ctxt -> Ok ctxt
+    end
     | Computation expr -> (
-      match check_security_of_expr ctxt expr with
+      match
+        check_security_of_expr
+          ctxt
+          expr
+          event.data.security_level.data
+          !(event.uid)
+      with
       | Error e ->
         Error
           (( expr.loc
-           , "[Error] Static ifc node exp " ^ (fst event.info.data).data ^ ":"
-             ^ (snd event.info.data).data )
+           , "[Error] Static ifc node exp " ^ (fst event.data.info.data).data
+             ^ ":" ^ (snd event.data.info.data).data )
           :: e)
-      | Ok security_level -> (
-        match
-          check_less_or_equal_security_level
-            event.security_level.data
-            ctxt.env
-            security_level
-            ctxt.env
-            ctxt.sec_params
-            ctxt.lattice
-            ctxt.symbolic
-          (* false *)
-        with
-        | symbolic, SAT -> Ok ({ ctxt with symbolic }, [])
-        | _, UNSAT e ->
-          Error
-            (( expr.loc
-             , "[Error] static ifc in node exp " ^ (fst event.info.data).data
-               ^ ":" ^ (snd event.info.data).data )
-            :: e)
-        | symbolic, Unknown e -> Ok ({ ctxt with symbolic }, e)))
+      | Ok ctxt -> Ok (ctxt, []))
   in
 
   let check_wellformedness _ = Ok [] in
-  let static_checking_security_param (security_event : security_level) loc ctxt
+  let static_checking_security_param (security_event : security_level) ctxt uuid
       =
     fold_left_error
-      (fun (acc, ctxt) (lvl : sec_label') ->
+      (fun ctxt lvl ->
         begin
           match lvl.data with
-          | SecExpr exp1 -> begin
-            match concat_list [ check_security_of_expr ctxt exp1 ] loc ctxt with
-            | Error e -> Error e
-            | Ok l -> Ok (l @ acc, ctxt)
-          end
-          | Sec lvl -> (
+          | SecExpr exp1 -> check_security_of_expr ctxt exp1 security_event uuid
+          | Sec lvl ->
             let _, list_params1 = lvl.data in
             let list_params_expr =
               List.map (fun (_, exp) -> exp.data) (deannotate_list list_params1)
             in
-            let list_params =
-              List.map
-                (fun exp ->
-                  match exp with
-                  | Top -> Ok _BOT_LEVEL
-                  | Bot -> Ok _BOT_LEVEL
-                  | Parameterised exp1 -> check_security_of_expr ctxt exp1)
-                list_params_expr
-            in
-            match concat_list list_params loc ctxt with
-            | Ok l -> Ok (l @ acc, ctxt)
-            | Error e -> Error e)
+            fold_left_error
+              (fun ctxt exp ->
+                match exp with
+                | Top -> Ok ctxt
+                | Bot -> Ok ctxt
+                | Parameterised exp1 ->
+                  check_security_of_expr ctxt exp1 security_event uuid)
+              ctxt
+              list_params_expr
         end)
-      ([], ctxt)
+      ctxt
       security_event
-    >>= fun (sec2, ctxt2) ->
-    Ok (get_levels_from_SC_List filter_higher_levels sec2 [] ctxt2)
   in
 
   let id, label = event.data.info.data in
@@ -1162,7 +1169,7 @@ and check_security_event (ctxt : Ctxt.t) event =
        )
       :: e)
   | Ok ctxt1 -> (
-    match static_check_security_of_data_expr event.data ctxt1 with
+    match static_check_security_of_data_expr event ctxt1 with
     | Error e ->
       Error
         (( event.data.info.loc
@@ -1182,8 +1189,8 @@ and check_security_event (ctxt : Ctxt.t) event =
         match
           static_checking_security_param
             event.data.security_level.data
-            Nowhere
             new_ctxt
+            !(event.uid)
         with
         | Error e ->
           Error
@@ -1191,63 +1198,25 @@ and check_security_event (ctxt : Ctxt.t) event =
              , "[Error] Checking security parameters in event " ^ id.data ^ ":"
                ^ label.data )
             :: e)
-        | Ok list -> (
-          match
-            check_less_or_equal_security_level
-              event.data.security_level.data
-              ctxt.env
-              list
-              ctxt.env
-              ctxt.sec_params
-              ctxt.lattice
-              ctxt.symbolic
-            (* false *)
-          with
-          | symbolic, SAT ->
-            let new_cond = cnf_and cnf_list2 cnf_list3 in
-
-            begin
-              match
-                Ctxt.add_symbol
-                  !(event.uid)
-                  event.data.info.loc
-                  new_cond
-                  "[Error] Event: Invalid event uuid in SAT"
-                  { new_ctxt with symbolic }
-              with
-              | Error e ->
-                Error
-                  (( event.data.info.loc
-                   , "[Error] Static checking security param in event "
-                     ^ id.data ^ ":" ^ label.data )
-                  :: e)
-              | Ok new_ctxt -> Ok new_ctxt
-            end
-          | _, UNSAT e ->
-            Error
-              (( event.data.info.loc
-               , "[Error] Static checking security param in event " ^ id.data
-                 ^ ":" ^ label.data )
-              :: e)
-          | symbolic, Unknown e ->
-            let new_cond = cnf_and e (cnf_and cnf_list2 cnf_list3) in
-            begin
-              match
-                Ctxt.add_symbol
-                  !(event.uid)
-                  event.data.info.loc
-                  new_cond
-                  "[Error] Event: Invalid event uuid in Unknown"
-                  { new_ctxt with symbolic }
-              with
-              | Error e ->
-                Error
-                  (( event.data.info.loc
-                   , "[Error] Checking security paramarameters in event "
-                     ^ id.data ^ ":" ^ label.data )
-                  :: e)
-              | Ok new_ctxt -> Ok new_ctxt
-            end))))
+        | Ok ctxt3 ->
+          let new_cond = cnf_and cnf_list2 cnf_list3 in
+          begin
+            match
+              Ctxt.add_symbol
+                !(event.uid)
+                event.data.info.loc
+                new_cond
+                "[Error] Event: Invalid event uuid in SAT"
+                ctxt3
+            with
+            | Error e ->
+              Error
+                (( event.data.info.loc
+                 , "[Error] Static checking security param in event " ^ id.data
+                   ^ ":" ^ label.data )
+                :: e)
+            | Ok new_ctxt -> Ok new_ctxt
+          end)))
 
 and check_less_or_equal_security_level (event_security : security_level)
     (env : node Env.t) (exp_security : security_level) (env2 : node Env.t)
@@ -1441,10 +1410,10 @@ and compareSecurityLevels (node1 : sec_label_param' parameterisable_role')
             | Error s, _ ->
               ( ctxt
               , UNSAT
-                  [ ( exp1.loc
-                    , "[Error] Expected two identical strings, got: "
+                  [ s
+                  ; ( exp1.loc
+                    , "[Error] Processing the first expression: "
                       ^ unparse_expr exp1 ^ " = " ^ unparse_expr exp2 )
-                  ; s
                   ]
                 :: list )
             | _, Error s2 ->
@@ -1568,7 +1537,7 @@ and compareSecurityLevels (node1 : sec_label_param' parameterisable_role')
    que têm caminho para outros*)
 (* Get the bottom levels of the list (least upper bound)   with tweaks *)
 (*Retorna os nós que não têm caminhos*)
-and filter_higher_levels (pc : sec_label' list) ctxt =
+(* and filter_higher_levels (pc : sec_label' list) ctxt =
   let rec filter_levels (filtered : sec_label' list) = function
     | [] -> filtered
     | l :: ls ->
@@ -1601,7 +1570,7 @@ and filter_higher_levels (pc : sec_label' list) ctxt =
       in
       filter_levels (l :: filtered') ls
   in
-  filter_levels [] pc
+  filter_levels [] pc *)
 
 (* and concat_list list loc (ctxt : Ctxt.t) :
     (security_level, (loc * role_label) list) result =
