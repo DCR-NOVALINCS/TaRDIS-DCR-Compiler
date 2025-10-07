@@ -40,7 +40,8 @@ let process_choreography lexbuf =
   |> write_to_file "choreo";
   Projectability.check program typecheck_res >>= fun () ->
   Projections.project program ifc_constraints_by_uid |> fun endpoints ->
-  let endpoint_encodings = List.map Babel.encode_endpoint_process endpoints in
+  (* let endpoint_encodings = List.map Babel.encode_endpoint_process endpoints in *)
+  let endpoint_encodings = Babel.encode_endpoint_processes endpoints in
   Ok endpoint_encodings
 
 let prep_output_dir () =
@@ -63,9 +64,10 @@ let main () =
   let lexbuf = Lexing.from_channel stdin in
   match process_choreography lexbuf with
   | Ok endpoints ->
-    List.iter
+    write_to_file ("choreo.json") endpoints;
+    (* List.iter
       (fun (role, endpoint) -> write_to_file (role ^ ".json") endpoint)
-      endpoints;
+      endpoints; *)
     print_endline "Compilation succeeded.";
     flush stdout;
     exit 0
