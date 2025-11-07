@@ -324,7 +324,8 @@ and encode_graph ({ events; relations; _ } : endpoint) : (string * Basic.t) list
   |> fun (graph : (string * Basic.t) list) ->
   Option.fold events ~none:graph ~some:(fun x -> ("events", `List x) :: graph)
 
-and encode_endpoint_process (endpoint : endpoint) : string * string =
+(* and encode_endpoint_process (endpoint : endpoint) : string * string = *)
+and encode_endpoint_process (endpoint : endpoint) : string * Basic.t =
   let role_label = (fst endpoint.role_decl).data in
   let (endpoint : Basic.t) =
     `Assoc
@@ -332,7 +333,15 @@ and encode_endpoint_process (endpoint : endpoint) : string * string =
       ; ("graph", `Assoc (encode_graph endpoint))
       ]
   in
-  (role_label, Yojson.Basic.pretty_to_string endpoint)
+  (role_label, endpoint)
+(* (role_label, Yojson.Basic.pretty_to_string endpoint) *)
+
+and encode_endpoint_processes (endpoints : endpoint list) : string =
+  let endpoints =
+    List.map encode_endpoint_process endpoints
+    |> List.map (fun (label, json) -> json)
+  in
+  Yojson.Basic.pretty_to_string (`List endpoints)
 
 let rec encode_error (errors : (Frontend.Syntax.loc * string) list) =
   let rec encode_pos (pos : Lexing.position) : Basic.t =
