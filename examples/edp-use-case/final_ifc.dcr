@@ -1,0 +1,28 @@
+CO(cid:String)
+P(id:String; cid:String)
+Public
+;
+Public flows CO
+Public flows P
+;
+(c:consume) (P(id:Bot; cid:Bot), CO(cid:Bot)) [?:String] [P(id=*; #cid as X) -> P(id=*; cid=X),  CO(cid=X)]
+(acc:acc) (CO(cid:Bot)) [?] [CO(cid=*)]
+(rq_f:request_fcast) (P(id:Bot; cid:Bot), CO(cid:Bot)) [?:String] [CO(#cid as X) -> P(id=*; cid=X)]
+;
+rq_f -->> {
+    !(rp_f:reply_fcast) (P(id:Bot; cid:@trigger.value), CO(cid:Bot)) [?] [@Receiver(rq_f) -> @Initiator(rq_f)]
+    ;
+    rp_f -->% rp_f
+    rp_f -->* acc
+}
+acc -->% acc
+rq_f *--> acc
+rq_f -->+ acc
+c -->> {
+    (dec:decision) (P(id:Bot; cid:@trigger.value), CO(cid:@trigger.value)) [?] [@Initiator(c) -> @Receiver(c)]
+    (rep:reply) (P(id:Bot; cid:@trigger.value), CO(cid:@trigger.value)) [?] [@Receiver(c) -> @Initiator(c)]
+    ;
+    rep -->% rep
+    dec -->% dec
+    rep -->* dec
+}

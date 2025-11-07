@@ -1,0 +1,17 @@
+
+Public
+Private
+E1(id:String;cid:String)
+E2(id:String;cid:String)
+CO
+;
+Public flows E1
+Public flows E2
+Public flows CO
+E1 flows Private
+E2 flows Private
+CO flows Private
+;
+
+(a:A)(E1(id:'1';cid:'1')) ['1'][Public]
+(d:D)(E1(id:'1';cid:a.value), CO) [a.value][Public]

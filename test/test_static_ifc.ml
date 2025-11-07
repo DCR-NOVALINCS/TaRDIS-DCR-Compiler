@@ -96,11 +96,11 @@ let test_suite =
     let state = build_state "resources/static_checking/new_exam/tardis_1init" test_ctxt in
     test_case state ( Ok TreeMap.empty) "Expected Ok in test EDP use case with params") )
     ;
-  ( "Testing edp use case with 2 sec labels" >::
+  (* ( "Testing edp use case with 2 sec labels" >::
   (fun test_ctxt ->
     let state = build_state "resources/static_checking/new_exam/tardis_1init" test_ctxt in
     test_case state ( Ok TreeMap.empty) "Expected Ok in test EDP use case with params") )
-    ;
+    ; *)
        
      
 

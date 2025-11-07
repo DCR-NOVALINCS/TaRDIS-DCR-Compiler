@@ -413,6 +413,7 @@ end = struct
   let reset_references ctxt =
     ctxt.global_label_SC := TreeMap.empty;
     let new_expr_map = CnfExprCtxt.return_constainsts ctxt.symbolic in
+    CnfExprCtxt.debug_expr_TreeMap2 new_expr_map;
     begin
       match ctxt.symbolic.mode with
       | Hybrid -> Ok new_expr_map
@@ -876,7 +877,7 @@ and check_security_relation (ctxt : Ctxt.t) cr =
             ctxt.symbolic
           (* false *)
         with *)
-      match check_security_of_expr ctxt exp node1.security_list !(cr.uid) with
+      match check_security_of_expr ctxt exp node2.security_list !(cr.uid) with
       | Error e ->
         Error
           (( cr.loc
@@ -1305,6 +1306,8 @@ and depth_first_search (node1 : sec_label_param' parameterisable_role')
     (node2 : sec_label_param' parameterisable_role')
     (lattice : string list TreeMap.t) (visited : string list) params
     (env : node Env.t) env2 symbolic =
+  (* print_endline @@ (fst node1.data).data;
+  print_endline @@ (fst node2.data).data; *)
   if List.mem (fst node1.data).data visited then (symbolic, SAT)
   else if (fst node1.data).data = (fst node2.data).data then
     compareSecurityLevels node1 node2 params env env2 symbolic
@@ -1374,7 +1377,7 @@ and compareSecurityLevels (node1 : sec_label_param' parameterisable_role')
             | None -> Bot
           in
           match (find_param param list1, find_param param list2) with
-          | Bot, _ | Parameterised _, Top | Top, Top -> (ctxt, SAT :: list)
+          | Bot, _ | _, Top -> (ctxt, SAT :: list)
           | Parameterised exp1, Parameterised exp2 -> (
             let symb1 = unparse_expr exp1 in
             let symb2 = unparse_expr exp2 in
